@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # Dedicated Better-Auth server (Hono on Bun). Owns the `auth` schema: applies
+  # its drizzle migrations on startup, then serves /api/auth/* (via nginx).
+  # Comes up before go-api, whose app migrations FK into auth.user.
+  auth-server:
+    build:
+      context: ./auth-server
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      - ENABLE_SIGNUP=${ENABLE_SIGNUP:-false}
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - APP_ENV=${APP_ENV:-production}
+      - PORT=8082
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go migration runner: applies the app (public) schema migrations on startup,
+  # then serves /health. Depends on auth-server because app tables FK into
+  # auth.user, which auth-server creates.
+  go-api:
+    build:
+      context: ./go-api
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - PORT=8080
+      - APP_ENV=${APP_ENV:-production}
+      - AUTO_MIGRATE=true
+    depends_on:
+      auth-server:
+        condition: service_healthy
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD", "./server", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Python RAG Service (FastAPI)
+  fast-api:
+    build:
+      context: ./fast-api
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - LOGFIRE_TOKEN=${LOGFIRE_TOKEN}
+      - BETTER_AUTH_URL=${BETTER_AUTH_URL}
+      # JWKS over the internal network, not the public BETTER_AUTH_URL.
+      - JWKS_URL=http://auth-server:8082/api/auth/jwks
+      - PORT=8081
+      - LOG_LEVEL=INFO
+      # AI Service Keys
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-voyage-4-large}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      - ELEVENLABS_AGENT_ID=${ELEVENLABS_AGENT_ID:-}
+      - APP_ENV=${APP_ENV:-production}
+      # R2 Credentials
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-}
+      - R2_ENDPOINT_URL=${R2_ENDPOINT_URL:-}
+      - R2_PUBLIC_URL_BASE=${R2_PUBLIC_URL_BASE:-}
+      # YouTube Proxy (for yt-dlp transcript fetching)
+      - YOUTUBE_PROXY_USERNAME=${YOUTUBE_PROXY_USERNAME:-}
+      - YOUTUBE_PROXY_PASSWORD=${YOUTUBE_PROXY_PASSWORD:-}
+      - YOUTUBE_PROXY_COUNTRY=${YOUTUBE_PROXY_COUNTRY:-}
+    # Wait for go-api to finish the public-schema migrations before serving:
+    # go-api only reports healthy after migrations complete, so this prevents
+    # fast-api (and nginx, which depends on fast-api) from handling requests
+    # against tables/columns that don't exist yet.
+    depends_on:
+      go-api:
+        condition: service_healthy
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/rag-api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NGINX Reverse Proxy
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - fast-api
+      - auth-server
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  root_network:
+    driver: bridge

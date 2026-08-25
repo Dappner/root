@@ -1,0 +1,8 @@
+packages:
+  - .
+
+onlyBuiltDependencies:
+  - canvas
+  - cypress
+  - esbuild
+  - sharp

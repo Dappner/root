@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "scheme": "rootmobile",
+    "name": "Root Mobile",
+    "slug": "root-mobile",
+    "icon": "./assets/icon.png",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser",
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Root uses the microphone to record voice notes while you listen."
+        }
+      ]
+    ],
+    "ios": {
+      "bundleIdentifier": "com.anonymous.root-mobile",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Root uses the microphone to record voice notes while you listen.",
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      },
+      "bitcode": false
+    },
+    "android": {
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "BLUETOOTH",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
+      "package": "com.anonymous.rootmobile"
+    }
+  }
+}

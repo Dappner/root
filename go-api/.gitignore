@@ -1,0 +1,11 @@
+bin/
+cmd/server/http/http
+cmd/server/http/http.exe
+/.gocache/
+/.cache/
+/.gomodcache/
+*.out
+*.test
+coverage/
+.env
+.DS_Store

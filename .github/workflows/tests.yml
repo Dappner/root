@@ -1,0 +1,119 @@
+name: Tests
+
+on:
+  push:
+    branches: [prod]
+  workflow_dispatch:
+
+jobs:
+  fast-api-unit:
+    name: Fast-Api Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fast-api
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+          enable-cache: true
+          cache-dependency-glob: fast-api/uv.lock
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run unit tests
+        run: make test-unit
+        env:
+          # No database needed; these are mocked. Config still requires
+          # these to construct Settings at import time.
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          EMBEDDING_API_KEY: test-key
+          LLM_API_KEY: test-key
+          BETTER_AUTH_URL: http://localhost:3000
+
+  fast-api-integration:
+    name: Fast-Api Integration Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: fast-api
+
+    services:
+      postgres:
+        image: paradedb/paradedb:0.20.5
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: root_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.17"
+          enable-cache: true
+          cache-dependency-glob: fast-api/uv.lock
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Install auth-server dependencies
+        working-directory: auth-server
+        run: bun install --frozen-lockfile
+
+      - name: Apply auth migrations
+        working-directory: auth-server
+        run: bun run db:migrate
+        env:
+          DATABASE_URL: postgresql://postgres:password@localhost:5432/root_test?sslmode=disable
+
+      - name: Run database migrations
+        # Run the real Go migrations rather than applying schema.sql — the
+        # dump is hand-refreshed (make dump-schema) and can lag behind
+        # migrations, which would let tests pass against a stale schema.
+        # This also exercises every migration on a fresh database per PR.
+        run: >-
+          docker run --rm --network host
+          -v ${{ github.workspace }}/go-api/migrations:/migrations
+          migrate/migrate:v4.19.0
+          -path=/migrations
+          -database "postgresql://postgres:password@localhost:5432/root_test?sslmode=disable"
+          up
+
+      - name: Run integration tests
+        run: make test-integration
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          TEST_DATABASE_URL: postgresql://postgres:password@localhost:5432/root_test
+          EMBEDDING_API_KEY: test-key
+          LLM_API_KEY: test-key
+          BETTER_AUTH_URL: http://localhost:3000

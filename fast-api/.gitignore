@@ -1,0 +1,39 @@
+# Byte-compiled / cached files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+
+# Virtual environments
+venv/
+.venv/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Lint / tooling caches
+.ruff_cache/
+.mypy_cache/
+
+# Packaging / builds
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environment / secrets
+.env
+.env.local
+.env.*
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Scratch notebooks (may contain credentials in cell outputs)
+*.ipynb

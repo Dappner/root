@@ -1,0 +1,6 @@
+/* In the Next app, `--font-geist-mono` was injected on <body> by next/font.
+   The Vite SPA has no next/font, so define the variable here. JetBrains Mono
+   Variable is already loaded by globals.css and is the app's primary face. */
+:root {
+  --font-geist-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}

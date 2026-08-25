@@ -1,0 +1,169 @@
+version: '3.8'
+
+# Local testing compose - includes postgres for self-contained testing
+# Usage: docker compose -f docker-compose.local.yml up --build
+
+services:
+  # PostgreSQL with pgvector + pg_search
+  postgres:
+    build:
+      context: ./go-api/docker/db
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: root
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Dedicated Better-Auth server (Hono on Bun). Owns the `auth` schema: applies
+  # its drizzle migrations on startup, then serves /api/auth/* (via nginx).
+  # Must come up before go-api, whose app migrations FK into auth.user.
+  # BETTER_AUTH_URL stays the public origin so cookie Secure flags + reset URLs
+  # are correct.
+  auth-server:
+    build:
+      context: ./auth-server
+      dockerfile: Dockerfile
+    # Local-only: hot-reload via bun --watch with the source bind-mounted. The
+    # image still provides node_modules + drizzle migrations; only src is live.
+    command: bun --watch src/index.ts
+    volumes:
+      - ./auth-server/src:/app/src
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/root?sslmode=disable
+      - BETTER_AUTH_URL=http://localhost:3000
+      # Local-only signing key (not a real secret); 32+ chars to satisfy better-auth.
+      - BETTER_AUTH_SECRET=local-dev-better-auth-secret-0123456789
+      - ENABLE_SIGNUP=true
+      - EMAIL_FROM=Root <noreply@localhost>
+      # Sensitive — injected by Doppler when you need email/captcha locally.
+      - TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET_KEY:-}
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      - APP_ENV=development
+      - NODE_ENV=development
+      - PORT=8082
+    networks:
+      - root_network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "bun", "-e", "fetch('http://localhost:8082/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Go migration runner: applies the app (public) schema migrations on startup,
+  # then serves /health. Depends on auth-server because app tables FK into
+  # auth.user, which auth-server creates.
+  go-api:
+    build:
+      context: ./go-api
+      dockerfile: Dockerfile
+    environment:
+      # Hardcode DB URL to use docker network (ignores Doppler's DATABASE_URL)
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/root?sslmode=disable
+      - PORT=8080
+      - APP_ENV=development
+      - AUTO_MIGRATE=true
+    networks:
+      - root_network
+    depends_on:
+      auth-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "./server", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Python RAG Service (FastAPI)
+  fast-api:
+    build:
+      context: ./fast-api
+      dockerfile: Dockerfile
+    # Local-only: mount the source over the image's copy and run uvicorn with
+    # --reload so edits on the host hot-reload inside the container. The image
+    # still provides the baked .venv (deps); only ./fast-api/app is live.
+    command: >-
+      uvicorn app.main:app --host 0.0.0.0 --port 8081
+      --reload --reload-dir /app/app
+    volumes:
+      - ./fast-api/app:/app/app
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/root?sslmode=disable
+      - BETTER_AUTH_URL=http://localhost:3000
+      # JWKS over the internal network, not the public BETTER_AUTH_URL.
+      - JWKS_URL=http://auth-server:8082/api/auth/jwks
+      - PORT=8081
+      - LOG_LEVEL=INFO
+      - APP_ENV=development
+      - ELEVENLABS_AGENT_ID=${ELEVENLABS_AGENT_ID:-}
+      # Sensitive AI keys — injected by Doppler (blank-OK for most local work).
+      - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY:-}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
+      # R2 Credentials (optional for local testing)
+      - R2_ACCOUNT_ID=${R2_ACCOUNT_ID:-}
+      - R2_ACCESS_KEY_ID=${R2_ACCESS_KEY_ID:-}
+      - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
+      - R2_BUCKET_NAME=${R2_BUCKET_NAME:-}
+      - R2_ENDPOINT_URL=${R2_ENDPOINT_URL:-}
+      - R2_PUBLIC_URL_BASE=${R2_PUBLIC_URL_BASE:-}
+      # YouTube Proxy (optional for local testing)
+      - YOUTUBE_PROXY_USERNAME=${YOUTUBE_PROXY_USERNAME:-}
+      - YOUTUBE_PROXY_PASSWORD=${YOUTUBE_PROXY_PASSWORD:-}
+      - YOUTUBE_PROXY_COUNTRY=${YOUTUBE_PROXY_COUNTRY:-}
+    networks:
+      - root_network
+    # Wait for go-api (healthy only after public-schema migrations complete) so
+    # fast-api never serves requests against not-yet-migrated tables. This
+    # transitively waits on auth-server -> postgres too.
+    depends_on:
+      go-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/rag-api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # NGINX Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - '8000:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/rate-limit.conf:/etc/nginx/rate-limit.conf:ro
+    depends_on:
+      fast-api:
+        condition: service_healthy
+      auth-server:
+        condition: service_healthy
+    networks:
+      - root_network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  root_network:
+    driver: bridge
+
+volumes:
+  postgres_data:

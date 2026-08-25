@@ -1,0 +1,71 @@
+# Git
+.git
+.gitignore
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+bin/
+*.test
+*.out
+auth.test
+
+# Test files
+test/
+*_test.go
+test-results.json
+test-report.html
+
+# Cache directories
+.cache/
+.gocache/
+.gomodcache/
+
+# Docker
+Dockerfile
+.dockerignore
+compose*.yml
+
+# Documentation
+*.md
+!README.md
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# SQLFluff
+.sqlfluff
+
+# Development tools
+Makefile
+nixpacks.toml
+
+# Frontend (if accidentally in api directory)
+frontend/
+node_modules/
+
+# Observability config
+grafana/
+prometheus/
+prometheus.yml
+otel-collector-config.yaml
+
+# Other
+TODOS.md
+json.json
+schema.sql

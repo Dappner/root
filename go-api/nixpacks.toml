@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["go_1_25"]
+
+[phases.install]
+cmds = ["go mod download"]
+
+[phases.build]
+cmds = ["go build -o bin/server cmd/server/http/main.go"]
+
+[start]
+cmd = "./bin/server"

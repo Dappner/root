@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignore": [
+    "src/api/generated.ts",
+    "src/features/rag/rag-api.generated.ts",
+    "src/db/schema.ts",
+    "src/db/relations.ts"
+  ],
+  "ignoreExportsUsedInFile": true,
+  "ignoreDependencies": [
+    "expo",
+    "react-native",
+    "@better-auth/expo"
+  ]
+}

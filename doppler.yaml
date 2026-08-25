@@ -1,0 +1,13 @@
+setup:
+  - project: root
+    config: local
+    path: .
+  - project: root
+    config: local
+    path: frontend/
+  - project: root
+    config: local
+    path: fast-api/
+  - project: root
+    config: local
+    path: go-api/
