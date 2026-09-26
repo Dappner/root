@@ -10,16 +10,14 @@ chunks).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
-from app.integrations.r2 import R2Client
 from app.models.database import PodcastEpisode, RagEmbedding, Source, Video
+from app.providers.object_store import ObjectNotFoundError, ObjectStore, read_json
 from app.services.transcript_embedding_service import TranscriptEmbeddingService
 
 logger = get_logger(__name__)
@@ -47,14 +45,12 @@ class TranscriptEmbeddingBackfillService:
         self,
         *,
         session_factory: async_sessionmaker[AsyncSession],
-        r2: R2Client,
+        r2: ObjectStore,
         embedding: TranscriptEmbeddingService,
-        http_timeout: float = 30.0,
     ) -> None:
         self._session_factory = session_factory
         self._r2 = r2
         self._embedding = embedding
-        self._http_timeout = http_timeout
 
     async def count_stale(self, user_id: str) -> int:
         async with self._session_factory() as db:
@@ -69,52 +65,51 @@ class TranscriptEmbeddingBackfillService:
         failed = 0
         skipped = 0
 
-        async with httpx.AsyncClient(timeout=self._http_timeout) as http:
-            for cand in candidates:
-                r2_key = _transcript_key(cand)
-                if r2_key is None:
-                    skipped += 1
-                    continue
+        for cand in candidates:
+            r2_key = _transcript_key(cand)
+            if r2_key is None:
+                skipped += 1
+                continue
 
-                try:
-                    transcript = await _fetch_transcript(http, self._r2, r2_key)
-                except FileNotFoundError:
-                    skipped += 1
-                    continue
-                except Exception:
-                    logger.exception(
-                        "transcript fetch failed",
-                        extra={"source_id": cand.source_id, "r2_key": r2_key},
-                    )
-                    failed += 1
-                    continue
+            try:
+                transcript = await read_json(self._r2, r2_key)
+            except ObjectNotFoundError:
+                skipped += 1
+                continue
+            except Exception:
+                logger.exception(
+                    "transcript fetch failed",
+                    extra={"source_id": cand.source_id, "r2_key": r2_key},
+                )
+                failed += 1
+                continue
 
-                try:
-                    async with self._session_factory() as db:
-                        # Single transaction: chunk writes + status flip land
-                        # atomically. `embed_episode_transcript` no longer
-                        # commits the caller's session (see
-                        # fast-api/AGENTS.md: takes-db services don't commit).
-                        written = await self._embedding.embed_episode_transcript(
-                            source_id=cand.source_id,
-                            transcript_data=transcript,
-                            db=db,
-                            episode_title=cand.episode_title,
-                            show_title=None,
-                            published_at=cand.episode_published_at,
-                        )
-                        await _mark_embedded(db, cand)
-                        await db.commit()
-                    if written > 0:
-                        embedded += 1
-                    else:
-                        skipped += 1
-                except (SQLAlchemyError, RuntimeError, ValueError):
-                    logger.exception(
-                        "transcript embed failed",
-                        extra={"source_id": cand.source_id},
+            try:
+                async with self._session_factory() as db:
+                    # Single transaction: chunk writes + status flip land
+                    # atomically. `embed_episode_transcript` no longer
+                    # commits the caller's session (see
+                    # fast-api/AGENTS.md: takes-db services don't commit).
+                    written = await self._embedding.embed_episode_transcript(
+                        source_id=cand.source_id,
+                        transcript_data=transcript,
+                        db=db,
+                        episode_title=cand.episode_title,
+                        show_title=None,
+                        published_at=cand.episode_published_at,
                     )
-                    failed += 1
+                    await _mark_embedded(db, cand)
+                    await db.commit()
+                if written > 0:
+                    embedded += 1
+                else:
+                    skipped += 1
+            except (SQLAlchemyError, RuntimeError, ValueError):
+                logger.exception(
+                    "transcript embed failed",
+                    extra={"source_id": cand.source_id},
+                )
+                failed += 1
 
         return TranscriptBackfillResult(
             embedded_sources=embedded,
@@ -171,16 +166,6 @@ def _transcript_key(c: _Candidate) -> str | None:
     if c.source_type == "video" and c.video_id is not None:
         return f"videos/{c.video_id}/transcript.json"
     return None
-
-
-async def _fetch_transcript(http: httpx.AsyncClient, r2: R2Client, key: str) -> dict[str, Any]:
-    url = r2.get_public_url(key)
-    response = await http.get(url)
-    if response.status_code == 404:
-        raise FileNotFoundError(key)
-    response.raise_for_status()
-    data: dict[str, Any] = response.json()
-    return data
 
 
 async def _mark_embedded(db: AsyncSession, c: _Candidate) -> None:

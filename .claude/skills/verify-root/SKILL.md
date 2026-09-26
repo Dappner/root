@@ -10,7 +10,7 @@ Drives the Root web app the way a user does and writes evidence to disk. Everyth
 | Real | Stand-in | How |
 |---|---|---|
 | Neon Postgres | `paradedb/paradedb:0.20.5` container (same image as CI) | fresh DB per `up.sh`, removed by `down.sh` |
-| Cloudflare R2 | moto S3 server, bucket `root-verify` | `R2_ENDPOINT_URL` |
+| Cloudflare R2 | moto S3 server, bucket `root-verify`, via the real `R2Client` (so presigned URLs work in the browser) | `OBJECT_STORE_PROVIDER=r2` + `R2_ENDPOINT_URL` |
 | Voyage embed/rerank | `scripts/fake_providers.py` (hashed bag-of-words vectors, 1024-d) | `EMBEDDING_BASE_URL` |
 | All LLMs (Gemini, OpenAI, Anthropic), default | in-process `FakeLLMClient` (`fast-api/app/providers/llm.py`): answers `[fake-llm] ...`, calls the real search tool once, fills structured outputs (follow-ups, sectioning, voice match) | `LLM_PROVIDER=fake` |
 | Gemini, with `VERIFY_LLM=http` | the live Jetflow Gemini client → `fake_providers.py`: `[stub-llm] ...` text, plus forced function calls for follow-ups and sectioning | `GOOGLE_GEMINI_BASE_URL` |

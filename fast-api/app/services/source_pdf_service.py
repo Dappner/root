@@ -1,6 +1,6 @@
 """PDF upload + retrieval for `pdf`-type sources.
 
-R2 storage lives in R2Client; this module owns the source-side orchestration:
+R2 storage lives in ObjectStore; this module owns the source-side orchestration:
 object-key resolution, replace-existing cleanup of PDF-derived highlights,
 metadata normalization, and cache-busted URL retrieval.
 """
@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.datetime_utils import utcnow
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.ownership import require_source
-from app.integrations.r2 import R2Client
 from app.models.database import Source
+from app.providers.object_store import ObjectStore
 from app.repositories.citation_repository import CitationRepository
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
@@ -43,7 +43,7 @@ def resolve_object_key(source: Source) -> str:
 _resolve_object_key = resolve_object_key
 
 
-def delete_stored_pdf(source: Source, r2: R2Client) -> None:
+def delete_stored_pdf(source: Source, r2: ObjectStore) -> None:
     """Delete a source's stored PDF object from R2 if storage is available and a
     key resolves. No-op otherwise. Shared by `source_service.delete_source`."""
     if not r2.is_available():
@@ -71,7 +71,7 @@ async def _delete_pdf_derived_highlights(db: AsyncSession, *, user_id: str, sour
 
 async def upload_pdf(
     db: AsyncSession,
-    r2: R2Client,
+    r2: ObjectStore,
     *,
     source_id: int,
     user_id: str,
@@ -115,7 +115,7 @@ async def upload_pdf(
 
 async def get_pdf_url(
     db: AsyncSession,
-    r2: R2Client,
+    r2: ObjectStore,
     *,
     source_id: int,
     user_id: str,

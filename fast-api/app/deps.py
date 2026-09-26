@@ -4,14 +4,14 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.clients import apple_podcasts, assemblyai, elevenlabs, embedder, r2, youtube
+from app.clients import apple_podcasts, assemblyai, elevenlabs, embedder, object_store, youtube
 from app.core.database import AsyncSessionLocal
 from app.integrations.apple_podcasts import ApplePodcastsClient
 from app.integrations.assemblyai import AssemblyAIClient
 from app.integrations.elevenlabs import ElevenLabsClient
-from app.integrations.r2 import R2Client
 from app.integrations.youtube import YouTubeTranscriptClient
 from app.providers.embedder import Embedder
+from app.providers.object_store import ObjectStore
 from app.repositories.podcast_repository import PodcastRepository
 from app.repositories.source_repository import SourceRepository
 from app.repositories.source_takeaway_repository import SourceTakeawayRepository
@@ -40,8 +40,8 @@ from app.services.transcript_embedding_service import TranscriptEmbeddingService
 from app.services.video_import_service import VideoImportService
 
 
-def get_r2() -> R2Client:
-    return r2
+def get_object_store() -> ObjectStore:
+    return object_store
 
 
 def get_embedder() -> Embedder:
@@ -148,7 +148,7 @@ def takeaway_service() -> SourceTakeawayService:
 
 
 def transcript_backfill_service(
-    r2_client: Annotated[R2Client, Depends(get_r2)],
+    r2_client: Annotated[ObjectStore, Depends(get_object_store)],
     embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> TranscriptEmbeddingBackfillService:
     return TranscriptEmbeddingBackfillService(

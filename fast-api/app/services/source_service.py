@@ -14,7 +14,7 @@ from app.core.datetime_utils import to_naive_utc, utcnow
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.core.ownership import require_source
 from app.core.url import normalize_url
-from app.integrations.r2 import R2Client
+from app.providers.object_store import ObjectStore
 from app.repositories.source_repository import SourceRepository
 from app.schemas.source_metadata import validate_source_metadata
 from app.schemas.sources import CreateSourceRequest, SourceDTO, UpdateSourceRequest
@@ -139,7 +139,7 @@ async def update_source(
     return detail
 
 
-async def delete_source(db: AsyncSession, user_id: str, source_id: int, r2: R2Client) -> None:
+async def delete_source(db: AsyncSession, user_id: str, source_id: int, r2: ObjectStore) -> None:
     source = await require_source(db, source_id, user_id)
 
     if source.type == "pdf":

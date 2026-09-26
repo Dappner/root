@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import anyio
-import httpx
 from fastapi import UploadFile
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +17,8 @@ from app.core.exceptions import ExternalServiceError, ValidationError
 from app.core.hashing import sha256_hex_or_none
 from app.core.logging import get_logger
 from app.core.ownership import require_citation, require_source, require_suggestion
-from app.integrations.r2 import R2Client
 from app.models.database import Capture, Citation, Suggestion
+from app.providers.object_store import ObjectStore, read_json
 from app.repositories.capture_repository import CaptureRepository
 from app.repositories.citation_repository import CitationRepository
 from app.repositories.source_section_repository import SourceSectionRepository
@@ -172,12 +171,12 @@ def build_transcript_location(
 class SuggestionService:
     def __init__(
         self,
-        r2_client: R2Client | None = None,
+        r2_client: ObjectStore | None = None,
     ) -> None:
         if r2_client is None:
-            from app.clients import r2
+            from app.clients import object_store
 
-            r2_client = r2
+            r2_client = object_store
         self._r2 = r2_client
 
     async def list_for_source(
@@ -571,13 +570,10 @@ class SuggestionService:
         if not episode:
             raise ValidationError("no transcript available")
 
-        r2_key = f"podcasts/{episode_id}/transcript.json"
-        url = self._r2.get_public_url(r2_key)
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(url)
-            response.raise_for_status()
-            transcript_json: dict[str, Any] = response.json()
-            return transcript_json
+        transcript_json: dict[str, Any] = await read_json(
+            self._r2, f"podcasts/{episode_id}/transcript.json"
+        )
+        return transcript_json
 
     def _candidate_utterances(
         self,

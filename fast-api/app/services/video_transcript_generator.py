@@ -12,8 +12,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import ExternalServiceError
-from app.integrations.r2 import R2Client
 from app.integrations.youtube import YouTubeTranscriptClient
+from app.providers.object_store import ObjectStore
 from app.repositories.source_repository import TranscriptStatus
 from app.services.transcript_pipeline import TranscriptPipeline
 
@@ -132,7 +132,7 @@ class VideoTranscriptGenerator(TranscriptPipeline):
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        r2_client: R2Client,
+        r2_client: ObjectStore,
         youtube_client: YouTubeTranscriptClient,
         embedding_service: Any = None,
         sectioning_service: Any = None,
@@ -202,7 +202,7 @@ _generator = None
 
 def get_video_transcript_generator() -> VideoTranscriptGenerator:
     """Get singleton video transcript generator instance."""
-    from app.clients import embedder, r2, youtube
+    from app.clients import embedder, object_store, youtube
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.services.transcript_embedding_service import TranscriptEmbeddingService
@@ -223,7 +223,7 @@ def get_video_transcript_generator() -> VideoTranscriptGenerator:
 
         _generator = VideoTranscriptGenerator(
             session_factory=AsyncSessionLocal,
-            r2_client=r2,
+            r2_client=object_store,
             youtube_client=youtube,
             embedding_service=embedding_service,
             sectioning_service=sectioning_service,

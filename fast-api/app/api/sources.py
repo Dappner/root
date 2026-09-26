@@ -7,9 +7,9 @@ from app.core.auth import get_current_user_id
 from app.core.database import get_db
 from app.core.exceptions import ValidationError
 from app.core.routing import APIRouter
-from app.deps import get_r2
+from app.deps import get_object_store
 from app.integrations.enrichment import fetch_metadata_from_web
-from app.integrations.r2 import R2Client
+from app.providers.object_store import ObjectStore
 from app.schemas.problem import Problem
 from app.schemas.sources import (
     CreateSourceRequest,
@@ -166,7 +166,7 @@ async def delete_source(
     source_id: int,
     user_id: Annotated[str, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    r2: Annotated[R2Client, Depends(get_r2)],
+    r2: Annotated[ObjectStore, Depends(get_object_store)],
 ) -> None:
     """Delete a source. For `pdf` sources the stored R2 object is removed first;
     child rows are handled by the DB's FK rules."""
@@ -248,7 +248,7 @@ async def upload_source_pdf(
     file: Annotated[UploadFile, File()],
     user_id: Annotated[str, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    r2: Annotated[R2Client, Depends(get_r2)],
+    r2: Annotated[ObjectStore, Depends(get_object_store)],
 ) -> PdfUploadResponse:
     """Store a PDF (max 50MB) for a `pdf`-type source. Replacing an existing
     PDF clears highlights derived from the previous file."""
@@ -286,7 +286,7 @@ async def get_source_pdf_url(
     source_id: int,
     user_id: Annotated[str, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    r2: Annotated[R2Client, Depends(get_r2)],
+    r2: Annotated[ObjectStore, Depends(get_object_store)],
 ) -> PdfUrlResponse:
     url = await get_pdf_url(db, r2, source_id=source_id, user_id=user_id)
     return PdfUrlResponse(url=url)

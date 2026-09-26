@@ -8,11 +8,11 @@ from app.core.config import settings
 from app.integrations.apple_podcasts import ApplePodcastsClient
 from app.integrations.assemblyai import AssemblyAIClient
 from app.integrations.elevenlabs import ElevenLabsClient
-from app.integrations.r2 import R2Client
 from app.integrations.youtube import YouTubeTranscriptClient
 from app.providers.embedder import create_embedder
+from app.providers.object_store import create_object_store
 
-r2 = R2Client()
+object_store = create_object_store(settings)
 embedder = create_embedder(settings)
 assemblyai = AssemblyAIClient(api_key=settings.assemblyai_api_key)
 elevenlabs = ElevenLabsClient(

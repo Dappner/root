@@ -1,16 +1,17 @@
-"""Cloudflare R2 storage client."""
+"""Cloudflare R2 implementation of the ObjectStore provider (S3 API via boto3)."""
 
 import json
 import logging
 import time
 from threading import Lock
-from typing import Protocol, cast
+from typing import Any, cast
 
 import boto3
 from botocore.exceptions import ClientError
 
 from app.core.config import settings
 from app.core.exceptions import ExternalServiceError
+from app.providers.object_store import ObjectNotFoundError, ObjectStoreError, ReadableByteStream
 
 logger = logging.getLogger(__name__)
 MULTIPART_CHUNK_SIZE = 8 * 1024 * 1024
@@ -23,12 +24,8 @@ PRESIGNED_URL_EXPIRES_IN = 7 * 24 * 60 * 60  # 7 days, used in boto call
 PRESIGNED_URL_CACHE_TTL = 6 * 24 * 60 * 60  # 6 days, in-process cache TTL
 
 
-class ReadableByteStream(Protocol):
-    def read(self, size: int = -1) -> bytes: ...
-
-
 class R2Client:
-    """Cloudflare R2 storage client."""
+    """Cloudflare R2 implementation of the ObjectStore provider (S3 API via boto3)."""
 
     def __init__(self) -> None:
         self.client = None
@@ -170,6 +167,21 @@ class R2Client:
             logger.error("Failed to upload stream to R2: %s", e)
             raise
 
+    def get_bytes(self, key: str) -> bytes:
+        if not self.client:
+            raise ExternalServiceError("r2", "client not initialized — credentials not configured")
+        try:
+            response = self.client.get_object(Bucket=settings.r2_bucket_name, Key=key)
+            return cast(bytes, response["Body"].read())
+        except ClientError as e:
+            if _is_not_found(e):
+                raise ObjectNotFoundError(key) from e
+            logger.error("Failed to read from R2: %s", e)
+            raise ObjectStoreError(f"failed to read {key}: {e}") from e
+
+    def get_json(self, key: str) -> Any:
+        return json.loads(self.get_bytes(key))
+
     def get_public_url(self, key: str) -> str:
         if settings.r2_public_url_base:
             return f"{settings.r2_public_url_base.rstrip('/')}/{key}"
@@ -214,9 +226,13 @@ class R2Client:
             self.client.head_object(Bucket=settings.r2_bucket_name, Key=key)
             return True
         except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code")
-            status_code = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
-            if error_code in {"404", "NoSuchKey", "NotFound"} or status_code == 404:
+            if _is_not_found(e):
                 return False
             logger.error("Failed to check R2 object: %s", e)
             raise
+
+
+def _is_not_found(e: ClientError) -> bool:
+    error_code = e.response.get("Error", {}).get("Code")
+    status_code = e.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return error_code in {"404", "NoSuchKey", "NotFound"} or status_code == 404

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import ExternalServiceError, NotFoundError, ValidationError
 from app.integrations.assemblyai import AssemblyAIClient
-from app.integrations.r2 import R2Client
+from app.providers.object_store import ObjectStore, read_json
 from app.repositories.source_repository import TranscriptStatus
 from app.repositories.source_section_repository import SourceSectionRepository
 from app.repositories.transcript_backfill_repository import TranscriptBackfillRepository
@@ -39,7 +39,7 @@ class TranscriptGenerator(TranscriptPipeline):
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        r2_client: R2Client,
+        r2_client: ObjectStore,
         assemblyai_client: AssemblyAIClient,
         embedding_service: Any = None,
         sectioning_service: Any = None,
@@ -156,14 +156,12 @@ class TranscriptGenerator(TranscriptPipeline):
                 " — must be 'transcribed' to embed"
             )
 
-        transcript_url = self.r2_client.get_public_url(self._transcript_key(episode_id))
+        transcript_key = self._transcript_key(episode_id)
+        transcript_url = self.r2_client.get_public_url(transcript_key)
 
         async def _fetch_and_embed() -> None:
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(transcript_url)
-                    response.raise_for_status()
-                    transcript_data = response.json()
+                transcript_data = await read_json(self.r2_client, transcript_key)
                 await self._embed_transcript(episode_id, transcript_data)
             except Exception as e:
                 logger.error(
@@ -322,7 +320,7 @@ _generator = None
 
 def get_transcript_generator() -> TranscriptGenerator:
     """Get singleton transcript generator instance."""
-    from app.clients import assemblyai, embedder, r2
+    from app.clients import assemblyai, embedder, object_store
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.services.transcript_embedding_service import TranscriptEmbeddingService
@@ -343,7 +341,7 @@ def get_transcript_generator() -> TranscriptGenerator:
 
         _generator = TranscriptGenerator(
             session_factory=AsyncSessionLocal,
-            r2_client=r2,
+            r2_client=object_store,
             assemblyai_client=assemblyai,
             embedding_service=embedding_service,
             sectioning_service=sectioning_service,

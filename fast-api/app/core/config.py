@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     elevenlabs_api_key: str = ""  # ElevenLabs API key (for conversational voice)
     elevenlabs_agent_id: str = ""  # ElevenLabs conversational agent ID
 
+    # Object storage: "r2" (Cloudflare R2 / any S3 endpoint) or "memory" (offline).
+    object_store_provider: str = "r2"
     # Cloudflare R2 configuration (for transcript storage)
     r2_account_id: str = ""
     r2_access_key_id: str = ""
@@ -84,12 +86,13 @@ class Settings(BaseSettings):
             "r2_bucket_name": self.r2_bucket_name,
             "r2_endpoint_url": self.r2_endpoint_url,
         }
-        missing.extend(name for name, value in r2_required.items() if not value)
+        if self.object_store_provider == "r2":
+            missing.extend(name for name, value in r2_required.items() if not value)
 
         if missing:
             missing_csv = ", ".join(sorted(missing))
             raise RuntimeError(
-                "Missing required environment configuration for FastAPI startup: " f"{missing_csv}"
+                f"Missing required environment configuration for FastAPI startup: {missing_csv}"
             )
 
 

@@ -6,7 +6,7 @@ from typing import List, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients import r2 as _r2_client
+from app.clients import object_store as _object_store
 from app.core.logging import get_logger
 from app.repositories.search_repository import SearchRepository
 from app.schemas.rag import RetrievalHit
@@ -127,7 +127,7 @@ async def vector_search(
                 embedding, user_id, source_ids, source_types, limit
             )
             if chunk_rows:
-                hydrator = TranscriptChunkHydrator(_r2_client)
+                hydrator = TranscriptChunkHydrator(_object_store)
                 requests = [
                     (row.source_id, row.chunk_index, row.episode_id, row.video_id)
                     for row in chunk_rows

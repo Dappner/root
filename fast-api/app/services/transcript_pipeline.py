@@ -15,12 +15,11 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
-import httpx
 from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.exceptions import ExternalServiceError, NotFoundError, ValidationError
-from app.integrations.r2 import R2Client
+from app.providers.object_store import ObjectStore, ObjectStoreError, read_json
 from app.repositories.source_repository import SourceRepository, TranscriptStatus
 
 logger = logging.getLogger(__name__)
@@ -39,7 +38,7 @@ class TranscriptPipeline(ABC):
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
-        r2_client: R2Client,
+        r2_client: ObjectStore,
         embedding_service: Any = None,
         sectioning_service: Any = None,
     ):
@@ -192,14 +191,12 @@ class TranscriptPipeline(ABC):
                 message = f"Transcript not ready. Current status: {status}"
             raise ValidationError(message)
 
-        presigned_url = self.r2_client.get_public_url(self._transcript_key(entity_id))
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(presigned_url)
-                response.raise_for_status()
-                transcript_data: dict[str, Any] = response.json()
-                return transcript_data
-        except httpx.HTTPError as e:
+            transcript_data: dict[str, Any] = await read_json(
+                self.r2_client, self._transcript_key(entity_id)
+            )
+            return transcript_data
+        except ObjectStoreError as e:
             raise ExternalServiceError("r2", f"failed to fetch transcript: {str(e)}") from e
 
     async def _update_status(

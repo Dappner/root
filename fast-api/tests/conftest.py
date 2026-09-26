@@ -15,6 +15,7 @@ import os
 # Tests never call real providers; set before app.clients builds them.
 os.environ.setdefault("EMBEDDING_PROVIDER", "fake")
 os.environ.setdefault("LLM_PROVIDER", "fake")
+os.environ.setdefault("OBJECT_STORE_PROVIDER", "memory")
 
 from collections.abc import AsyncGenerator  # noqa: E402
 
