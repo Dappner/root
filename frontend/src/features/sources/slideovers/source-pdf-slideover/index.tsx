@@ -49,10 +49,13 @@ import {
 import { pdfjs } from "react-pdf";
 import "@nicklasastorian/react-pdf-annotator/style.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+// Bundled pdf.js worker (same pdfjs-dist version the annotator uses). Passed to
+// PdfLoader too, which otherwise fetches its worker from unpkg at runtime.
+const PDF_WORKER_SRC = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
 ).toString();
+pdfjs.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
 
 const MAX_PDF_BYTES = 50 * 1024 * 1024;
 const MAX_PDF_PAGES = 500;
@@ -111,7 +114,15 @@ export function SourcePdfSlideover({
   const metadata = (source?.metadata as Record<string, unknown> | undefined) ?? {};
   const pageCount = typeof metadata.page_count === "number" ? metadata.page_count : null;
   const sizeBytes = typeof metadata.size_bytes === "number" ? metadata.size_bytes : null;
-  const hasPdf = pageCount !== null;
+  // size_bytes is stamped on every upload; page_count only since the backend
+  // started storing it, so PDFs uploaded earlier have size_bytes alone.
+  const hasPdf = sizeBytes !== null || pageCount !== null;
+  const pdfSummary = [
+    pageCount !== null ? `${pageCount} pages` : null,
+    sizeBytes !== null ? formatBytes(sizeBytes) : null,
+  ]
+    .filter(Boolean)
+    .join(" • ");
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -417,8 +428,7 @@ export function SourcePdfSlideover({
             <div>
               <div className="text-sm font-medium">PDF Viewer</div>
               <div className="text-xs text-muted-foreground">
-                {pageCount != null ? `${pageCount} pages` : "No PDF uploaded"}
-                {sizeBytes != null ? ` • ${formatBytes(sizeBytes)}` : ""}
+                {hasPdf ? pdfSummary : "No PDF uploaded"}
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -461,6 +471,7 @@ export function SourcePdfSlideover({
             {hasPdf && pdfUrl ? (
               <PdfLoader
                 url={pdfUrl}
+                workerSrc={PDF_WORKER_SRC}
                 beforeLoad={
                   <div className="flex items-center text-sm text-muted-foreground px-4 py-3">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

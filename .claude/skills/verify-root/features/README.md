@@ -8,7 +8,7 @@ These are the user-facing features of the Root web app and how to prove each one
 | Highlights → embeddings | [highlights-embeddings.md](highlights-embeddings.md) | `quote-embed-ask` (first half) | pass (was failing before the `get_db` scope fix) |
 | Ask (RAG chat) | [ask.md](ask.md) | `quote-embed-ask` (second half) | pass (fake LLM; real search tool) |
 | Reflect + follow-ups | [reflect.md](reflect.md) | `reflect-followups` | pass in both LLM modes (chips were silently empty before the fix) |
-| PDF sources | [pdf.md](pdf.md) | `pdf-upload` | storage pass; **viewer never shows the PDF (open product bug)** |
+| PDF sources | [pdf.md](pdf.md) | `pdf-upload` | pass (viewer never showed uploads before the fix) |
 | Notes | [notes.md](notes.md) | none yet (recipe in file) | reached: editor opens, row created |
 | Auth & admin | [auth-admin.md](auth-admin.md) | covered by every scenario's login; admin recipe in file | pass |
 

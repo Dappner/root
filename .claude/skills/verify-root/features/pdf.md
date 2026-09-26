@@ -21,14 +21,20 @@ Scenario: `node run.mjs pdf-upload`.
 1. Select the type by clicking its label: `dialog.getByText("PDF", { exact: true })`. The radio input itself is visually hidden.
 2. `setInputFiles` on `input[type=file][accept='application/pdf']`. The scenario generates a one-page PDF, and the step waits for `POST /rag-api/sources/{id}/pdf` to return 2xx.
 
+3. Open the viewer (`PDF [P]`) and wait for the page's text ("Verify PDF upload") in the pdf.js text layer.
+4. Legacy-row check: remove `page_count` from the row, reload, and open the viewer again.
+
 **Proof:**
-- `sources.pdf_object_key` is set.
+- `sources.pdf_object_key` is set, and `metadata.page_count` is `1`.
 - The object is in the S3 stand-in. The bucket listing `GET $S3_URL/root-verify?list-type=2&prefix=<key>` is open; objects themselves are private, so unsigned GET and HEAD return 403.
 - The presigned URL from `/pdf/url` serves bytes starting `%PDF-` of the uploaded size. Fetch it with `page.request`, not `window.fetch`, because the bucket sends no CORS headers.
+- The viewer renders the page, both freshly uploaded and for a legacy row.
 
 ## Gotchas
 
-- **Open product bug (found 2026-09-26, present before the ObjectStore refactor):** after a successful upload the viewer says "No PDF uploaded • N B" and never loads the file.
-  - `hasPdf` in `source-pdf-slideover/index.tsx` depends on `metadata.page_count`.
-  - The backend's `_normalize_pdf_metadata` removes `page_count` on every upload, and the frontend computes the page count (`getPdfPageCount`) but never sends it.
-  - The scenario records `viewer_shows_pdf` (currently `false`) instead of asserting it. Flip it to an assertion once the bug is fixed.
+- **Fixed 2026-09-26:** the viewer never showed an uploaded PDF ("No PDF uploaded • N B").
+  - Cause: `hasPdf` depended on `metadata.page_count`, which the backend stripped on every upload and nothing ever set.
+  - The backend now counts pages with `pypdf` on upload. It stores `page_count`, rejects unreadable or over-500-page files with 400, and citation bounds-validation uses the stored count.
+  - The viewer treats `size_bytes` as enough, so PDFs uploaded before the fix open without a backfill.
+  - `compare.sh HEAD~1 pdf-upload` shows the base failing.
+- The annotator's `PdfLoader` used to fetch its pdf.js worker from `unpkg.com`, which the cloud proxy blocks. It now gets the bundled worker (`workerSrc={PDF_WORKER_SRC}`), so the viewer works offline and prod no longer depends on that CDN.

@@ -188,3 +188,44 @@ async def test_delete_source_returns_204_then_get_403(client: AsyncClient) -> No
 async def test_get_unowned_source_returns_403(client: AsyncClient) -> None:
     res = await client.get("/rag-api/sources/99999999")
     assert res.status_code == 403
+
+
+def _pdf_bytes(pages: int) -> bytes:
+    import io
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=612, height=792)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+async def test_pdf_upload_stores_page_count_and_serves_url(client: AsyncClient) -> None:
+    """Regression: page_count was stripped on upload and never set, so the viewer
+    (which keys "has a PDF" off it) always showed "No PDF uploaded"."""
+    created = await _create_source(client, title="Paper", type="pdf")
+    data = _pdf_bytes(3)
+
+    res = await client.post(
+        f"/rag-api/sources/{created['id']}/pdf",
+        files={"file": ("paper.pdf", data, "application/pdf")},
+    )
+    assert res.status_code == 200, res.text
+
+    source = (await client.get(f"/rag-api/sources/{created['id']}")).json()
+    assert source["metadata"]["page_count"] == 3
+    assert source["metadata"]["size_bytes"] == len(data)
+    url = await client.get(f"/rag-api/sources/{created['id']}/pdf/url")
+    assert url.status_code == 200, url.text
+
+
+async def test_pdf_upload_rejects_unreadable_file(client: AsyncClient) -> None:
+    created = await _create_source(client, title="Not a PDF", type="pdf")
+    res = await client.post(
+        f"/rag-api/sources/{created['id']}/pdf",
+        files={"file": ("fake.pdf", b"%PDF-1.4 garbage", "application/pdf")},
+    )
+    assert res.status_code == 400, res.text

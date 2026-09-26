@@ -7,9 +7,12 @@ metadata normalization, and cache-busted URL retrieval.
 
 from __future__ import annotations
 
+import io
 import uuid
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.datetime_utils import utcnow
@@ -20,6 +23,7 @@ from app.providers.object_store import ObjectStore
 from app.repositories.citation_repository import CitationRepository
 
 MAX_PDF_BYTES = 50 * 1024 * 1024
+MAX_PDF_PAGES = 500  # matches the frontend limit
 
 
 def _new_object_key() -> str:
@@ -53,12 +57,29 @@ def delete_stored_pdf(source: Source, r2: ObjectStore) -> None:
         r2.delete(object_key)
 
 
-def _normalize_pdf_metadata(metadata: dict, size_bytes: int) -> dict:
-    """Drop stale derived fields and stamp the new size."""
+def count_pdf_pages(data: bytes) -> int:
+    """Page count of an uploaded PDF; ValidationError if unreadable or too long."""
+    try:
+        pages = len(PdfReader(io.BytesIO(data)).pages)
+    except (PdfReadError, ValueError, OSError) as e:
+        raise ValidationError("invalid PDF: file could not be read") from e
+    if pages == 0:
+        raise ValidationError("invalid PDF: no pages")
+    if pages > MAX_PDF_PAGES:
+        raise ValidationError(f"PDF must be {MAX_PDF_PAGES} pages or fewer")
+    return pages
+
+
+def _normalize_pdf_metadata(metadata: dict, size_bytes: int, page_count: int) -> dict:
+    """Drop stale derived fields and stamp the new file's size and page count.
+
+    The viewer treats a PDF as present only when ``page_count`` is set, and
+    citation location validation uses it for page bounds.
+    """
     normalized = dict(metadata or {})
-    normalized.pop("page_count", None)
     normalized.pop("has_text_layer", None)
     normalized["size_bytes"] = size_bytes
+    normalized["page_count"] = page_count
     return normalized
 
 
@@ -94,6 +115,7 @@ async def upload_pdf(
         raise ValidationError("invalid PDF upload")
     if "pdf" not in content_type.lower():
         raise ValidationError("invalid file type; PDF required")
+    page_count = count_pdf_pages(data)
 
     object_key = _resolve_object_key(source) or _new_object_key()
 
@@ -108,7 +130,7 @@ async def upload_pdf(
         await _delete_pdf_derived_highlights(db, user_id=user_id, source_id=source_id)
 
     source.pdf_object_key = object_key
-    source.metadata_json = _normalize_pdf_metadata(source.metadata_json, len(data))
+    source.metadata_json = _normalize_pdf_metadata(source.metadata_json, len(data), page_count)
     source.updated_at = utcnow()
     return len(data)
 

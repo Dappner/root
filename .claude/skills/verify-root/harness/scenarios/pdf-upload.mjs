@@ -1,6 +1,6 @@
-// Feature: PDF source — upload a PDF through the source page. Proves the
-// ObjectStore write (object in the S3 stand-in, key on the source row) and the
-// read through a presigned URL; records whether the viewer shows it.
+// Feature: PDF source — upload a PDF through the source page, then read it in
+// the viewer. Proves the ObjectStore write (object in the S3 stand-in, key and
+// page_count on the source row), the presigned-URL read, and the viewer render.
 
 // Minimal one-page PDF with visible text (xref offsets computed below).
 function makePdf(text) {
@@ -76,12 +76,24 @@ export default async ({ page, shot, sql, state, expect }) => {
   const body = await pdf.body();
   expect(pdf.ok() && body.subarray(0, 5).toString() === "%PDF-" && body.length === Number(size), "presigned URL serves the uploaded PDF");
 
-  // Viewer: records what the user sees. Known product bug (features/pdf.md):
-  // page_count is never stored, so the viewer shows "No PDF uploaded".
+  const pageCount = sql(`select metadata->>'page_count' from sources where id = ${sourceId}`);
+  expect(pageCount === "1", `metadata.page_count stored (got ${pageCount})`);
+
+  // Viewer: opens, fetches the presigned URL and renders the page.
+  const pdfFetched = page.waitForResponse((r) => r.url().includes(key) && r.ok(), { timeout: 20000 });
   await page.getByRole("button", { name: /^PDF/ }).click();
   await page.getByText("PDF Viewer").waitFor();
-  await page.waitForTimeout(1000);
+  await page.getByText("1 pages").waitFor({ timeout: 10000 });
+  await pdfFetched;
+  await page.getByText("Verify PDF upload").first().waitFor({ timeout: 15000 }); // pdf.js text layer
   await shot("viewer");
-  const viewerShowsPdf = !(await page.getByText("No PDF uploaded").isVisible());
-  return { source_id: Number(sourceId), pdf_object_key: key, object_size: Number(size), viewer_shows_pdf: viewerShowsPdf };
+
+  // Rows uploaded before page_count was stored have only size_bytes: the
+  // viewer must still open them.
+  sql(`update sources set metadata = metadata - 'page_count' where id = ${sourceId}`);
+  await page.goto(`/library/${sourceId}`);
+  await page.getByRole("button", { name: /^PDF/ }).click();
+  await page.getByText("Verify PDF upload").first().waitFor({ timeout: 15000 });
+  await shot("viewer-legacy-row");
+  return { source_id: Number(sourceId), pdf_object_key: key, object_size: Number(size), page_count: Number(pageCount) };
 };
