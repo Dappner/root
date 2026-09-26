@@ -55,6 +55,13 @@ export async function session(opts = {}) {
   const dir = path.join(REPO_ROOT, ".verify/evidence", `${stamp}-${opts.label ?? "run"}`);
   fs.mkdirSync(dir, { recursive: true });
 
+  // Provider calls made during this session end up in the evidence (the run dir
+  // itself is deleted by down.sh).
+  const providerLog = path.join(state.RUN_DIR ?? "", "fake-providers.jsonl");
+  const readProviderLog = () =>
+    fs.existsSync(providerLog) ? fs.readFileSync(providerLog, "utf8").split("\n").filter(Boolean) : [];
+  const providerLinesBefore = readProviderLog().length;
+
   const browser = await chromium.launch();
   const context = await browser.newContext({
     baseURL: state.WEB_URL,
@@ -97,6 +104,8 @@ export async function session(opts = {}) {
       fs.renameSync(src, path.join(dir, "video.webm"));
     }
     fs.writeFileSync(path.join(dir, "events.json"), JSON.stringify(events, null, 2));
+    const calls = readProviderLog().slice(providerLinesBefore);
+    fs.writeFileSync(path.join(dir, "provider-calls.jsonl"), calls.join("\n") + (calls.length ? "\n" : ""));
     fs.writeFileSync(
       path.join(dir, "result.json"),
       JSON.stringify({ label: opts.label, git_head: state.GIT_HEAD, web_url: state.WEB_URL, ...result }, null, 2)

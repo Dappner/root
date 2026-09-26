@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.integrations.llm import create_llm_client
+from app.core.config import Settings
+from app.integrations.llm import JetflowLLMProvider
 from app.schemas.rag import ModelConfig
 from app.services.voice_suggestion_matcher import DEFAULT_MODEL, REASONING_EFFORT
 
@@ -43,7 +44,10 @@ def test_claude_sonnet_5_allows_max_effort():
 
 
 def test_claude_5_maps_reasoning_to_adaptive_effort():
-    client = create_llm_client(
+    provider = JetflowLLMProvider(
+        Settings(database_url="postgresql://t:t@localhost/t", anthropic_api_key="k")
+    )
+    client = provider.client(
         ModelConfig(
             provider="anthropic",
             model="claude-sonnet-5",

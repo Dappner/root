@@ -4,10 +4,9 @@ from pathlib import Path
 from string import Template
 from typing import Any, Literal
 
-from jetflow.clients.openai import AsyncOpenAIClient
 from pydantic import BaseModel, Field, model_validator
 
-from app.integrations.llm import create_llm_client
+from app.providers.llm import create_llm_client
 from app.schemas.rag import ModelConfig
 
 DEFAULT_MODEL: Literal["gpt-5.6-luna"] = "gpt-5.6-luna"
@@ -188,20 +187,16 @@ class VoiceSuggestionMatch(BaseModel):
 
 
 class VoiceSuggestionMatcher:
-    def __init__(self, llm_api_key: str) -> None:
-        if not llm_api_key or not llm_api_key.strip():
-            raise ValueError("OpenAI API key is required for voice suggestion matching")
-        client = create_llm_client(
+    def __init__(self) -> None:
+        # Relies on `extract()` (native structured outputs on OpenAI). Raises if
+        # the provider has no OpenAI key configured.
+        self.client = create_llm_client(
             ModelConfig(
                 provider="openai",
                 model=DEFAULT_MODEL,
                 reasoning_effort=REASONING_EFFORT,
             )
         )
-        # The matcher is OpenAI-only and relies on `extract()` (native structured
-        # outputs). Narrow the factory's union so the type checker sees `extract`.
-        assert isinstance(client, AsyncOpenAIClient)
-        self.client = client
 
     async def match(
         self,

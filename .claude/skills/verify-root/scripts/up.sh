@@ -10,6 +10,9 @@
 source "$(dirname "$0")/common.sh"
 
 if [ -f "$RUN_DIR/state.env" ]; then
+  running_mode=$(sed -n 's/^LLM_MODE=//p' "$RUN_DIR/state.env")
+  [ "${running_mode:-fake}" = "${VERIFY_LLM:-fake}" ] \
+    || die "instance runs VERIFY_LLM=${running_mode:-fake}; run scripts/down.sh to switch to ${VERIFY_LLM:-fake}"
   if "$SKILL_DIR/scripts/doctor.sh" >/dev/null 2>&1; then
     log "already up and healthy: $WEB_URL"; echo "$RUN_DIR/state.env"; exit 0
   fi
@@ -95,6 +98,14 @@ start_bg auth-server "$APP_ROOT/auth-server" bun src/index.ts
 wait_http auth-server "http://127.0.0.1:$AUTH_PORT/health" 60
 
 # --- fast-api --------------------------------------------------------------
+# LLM: in-process FakeLLMClient by default (every model, scripted tool calls,
+# structured outputs). VERIFY_LLM=http instead runs the live Jetflow Gemini
+# client against fake_providers.py (exercises the SDK/HTTP path; Gemini only).
+case "${VERIFY_LLM:-fake}" in
+  fake) LLM_PROVIDER=fake ;;
+  http) LLM_PROVIDER=live ;;
+  *) die "VERIFY_LLM must be fake or http" ;;
+esac
 log "fast-api on :$API_PORT"
 SVC_ENV=(
   DATABASE_URL="$DATABASE_URL" BETTER_AUTH_URL="$WEB_URL"
@@ -102,6 +113,7 @@ SVC_ENV=(
   APP_ENV=local LOG_LEVEL=INFO CORS_ORIGINS="[\"$WEB_URL\"]"
   EMBEDDING_API_KEY=fake-voyage-key EMBEDDING_BASE_URL="http://127.0.0.1:$FAKE_PORT/v1"
   GOOGLE_API_KEY=fake-google-key GOOGLE_GEMINI_BASE_URL="http://127.0.0.1:$FAKE_PORT"
+  LLM_PROVIDER="$LLM_PROVIDER"
   R2_ACCOUNT_ID=verify R2_ACCESS_KEY_ID=verify R2_SECRET_ACCESS_KEY=verify
   R2_BUCKET_NAME=root-verify R2_ENDPOINT_URL="http://127.0.0.1:$S3_PORT"
   NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}" no_proxy="127.0.0.1,localhost,${no_proxy:-}"
@@ -126,6 +138,7 @@ docker exec "$PG_CONTAINER" psql -U postgres -d root -qc \
 
 cat >"$RUN_DIR/state.env" <<EOF
 INSTANCE=$INSTANCE
+LLM_MODE=${VERIFY_LLM:-fake}
 RUN_DIR=$RUN_DIR
 WEB_URL=$WEB_URL
 API_URL=http://127.0.0.1:$API_PORT

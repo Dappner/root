@@ -36,6 +36,7 @@ The old Go backend has been retired from application traffic. The remaining Go s
 - **Repositories**: data access only — `db.add` / `db.flush` / queries. Repos never call `db.commit()`.
 - **Models/DB**: SQLAlchemy models and vector search helpers.
 - **Providers** (`app/providers/`): the seams services depend on. Each has a Protocol, a deterministic in-repo fake, and a factory that picks the real integration or the fake from settings (e.g. `Embedder`, `EMBEDDING_PROVIDER=voyage|fake`). Services type-hint against the Protocol, never a vendor SDK.
+  - LLMs: services call `create_llm_client(ModelConfig)` from `app/providers/llm.py` and get a Jetflow `AsyncBaseClient` (Jetflow's client interface is already vendor-neutral). `LLM_PROVIDER=live` builds vendor clients (`app/integrations/llm.py`, which also checks API keys); `LLM_PROVIDER=fake` gives `FakeLLMClient`, which follows Jetflow's protocol with scripted responders keyed by action/schema name (`DEFAULT_RESPONDERS`). Tests swap providers with `set_llm_provider()`.
 - **Integrations**: provider-specific clients (R2, YouTube/AssemblyAI, LLMs) and the real implementations of provider Protocols (e.g. `VoyageEmbedder`).
 
 ## Dependency Injection
@@ -138,7 +139,7 @@ All timestamps in the DB are stored as UTC. Most columns are `timestamp without 
   - `doppler run -- make test-integration` (pytest, needs a migrated `TEST_DATABASE_URL`)
 - Unit tests still import `app.core.config` at collection time, so they need
   `DATABASE_URL` set even though they never touch the DB. `tests/conftest.py`
-  defaults `EMBEDDING_PROVIDER=fake`, so no Voyage key is needed:
+  defaults `EMBEDDING_PROVIDER=fake` and `LLM_PROVIDER=fake`, so no provider keys are needed:
   `DATABASE_URL=postgresql://test:test@localhost:5432/test make test-unit`
 
 ## References

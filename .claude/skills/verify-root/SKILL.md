@@ -12,8 +12,9 @@ Drives the Root web app the way a user does and writes evidence to disk. Everyth
 | Neon Postgres | `paradedb/paradedb:0.20.5` container (same image as CI) | fresh DB per `up.sh`, removed by `down.sh` |
 | Cloudflare R2 | moto S3 server, bucket `root-verify` | `R2_ENDPOINT_URL` |
 | Voyage embed/rerank | `scripts/fake_providers.py` (hashed bag-of-words vectors, 1024-d) | `EMBEDDING_BASE_URL` |
-| Gemini (default Ask model) | same fake, returns `[stub-llm] ...` text | `GOOGLE_GEMINI_BASE_URL` |
-| OpenAI, Anthropic, AssemblyAI, YouTube, ElevenLabs, Resend, Turnstile | **not stubbed** (keys blank) | features using them are unreachable |
+| All LLMs (Gemini, OpenAI, Anthropic), default | in-process `FakeLLMClient` (`fast-api/app/providers/llm.py`): answers `[fake-llm] ...`, calls the real search tool once, fills structured outputs (follow-ups, sectioning, voice match) | `LLM_PROVIDER=fake` |
+| Gemini, with `VERIFY_LLM=http` | the live Jetflow Gemini client → `fake_providers.py`: `[stub-llm] ...` text, plus forced function calls for follow-ups and sectioning | `GOOGLE_GEMINI_BASE_URL` |
+| AssemblyAI, YouTube, ElevenLabs, Resend, Turnstile | **not stubbed** (keys blank) | features using them are unreachable |
 
 **Safety.** Services start with `env -i` plus an explicit variable list, so nothing leaks in from your shell or Doppler (`DATABASE_URL`, `LOGFIRE_TOKEN`, real keys). The scripts refuse any `DATABASE_URL` that isn't `127.0.0.1` or `localhost`.
 
@@ -43,6 +44,7 @@ $S/scripts/up.sh          # ~25s warm; first run also installs deps and pulls im
 - **Other source tree:** `VERIFY_APP_ROOT=<path>` runs the app from another checkout (a worktree); `compare.sh` uses this.
 - **Docker:** in a cloud container `up.sh` starts `dockerd` itself when no daemon is running (root only).
 - **Rerunning:** if the instance is already healthy, `up.sh` exits 0. If it is stale, `up.sh` tells you to run `down.sh` first.
+- **LLM mode:** `VERIFY_LLM=fake` (the default) covers every model in-process. `VERIFY_LLM=http` exercises the real Gemini SDK over HTTP instead, which is useful when a change touches Jetflow or client wiring. Switching modes requires `down.sh` first, and `up.sh` refuses to reuse an instance started in the other mode.
 - **Code changes:** fast-api runs without `--reload`. After changing backend code, run `down.sh` then `up.sh`. Vite picks up frontend changes live.
 
 ## Doctor
@@ -81,7 +83,7 @@ VERIFY_PORT_OFFSET=1 node run.mjs <scenario>                         # drive ano
 - **Selectors:** use roles and accessible names first (`getByRole("button", { name: "Add Source" })`, `getByRole("dialog", { name: "Add Citation" })`, `getByRole("textbox", { name: "Title *" })`). Use `input#email` / `input#password` on `/login`. Don't rely on coordinates or nth-child. When a name is unknown, run `_explore` and read `aria.yml`.
 - **Helpers for evidence outside the browser:**
   - `$S/scripts/db.sh "<sql>"` runs psql against the instance.
-  - `.verify/run/i0/fake-providers.jsonl` logs one line per stubbed Voyage/Gemini call.
+  - `.verify/run/i0/fake-providers.jsonl` logs one line per call to the HTTP fakes (Voyage, and Gemini in `http` mode). Each run also copies its own lines into `provider-calls.jsonl` in the evidence dir.
   - `.verify/run/i0/*.log` holds each service's logs.
 - **API calls without the UI:** sign in with `POST /api/auth/sign-in/email` (cookie jar, `Origin: http://localhost:13000`). Then `GET /api/auth/token` returns a JWT; send it as `Authorization: Bearer <jwt>` to `/rag-api/*` on port 13000.
 
@@ -93,6 +95,7 @@ Each run writes to `.verify/evidence/<UTC-timestamp>-<scenario>/`:
 - numbered `NN-<step>.png` screenshots
 - `video.webm` of the whole session
 - `events.json`: every `/rag-api` and `/api/auth` response status, plus console errors and page errors
+- `provider-calls.jsonl`: the HTTP-fake provider calls this run made (embeds, reranks, Gemini calls, forced function calls)
 - `result.json`: `ok`, `git_head`, and whatever the scenario returned (ids, urls), or the error plus a `failure.png`
 
 `.verify/` is gitignored and `down.sh` never deletes evidence.
@@ -112,7 +115,7 @@ $S/scripts/compare.sh origin/main <scenario>     # ~1 min; prints the compare di
 - Drive the real user path (dialogs, buttons, routes), not internal setters or seeded shortcuts. Seeding is for preconditions only.
 - Capture the action and the resulting state (a before shot, the filled form, the after state), not just the final screen.
 - Check side effects next to what's visible: DB rows via `sql()`, provider calls in `fake-providers.jsonl`, objects in S3 (`curl http://127.0.0.1:19000/root-verify`).
-- Stubs replace only the external provider boundary. Everything from the SDK call inward is real app code. A `[stub-llm]` answer proves the pipeline end to end. It says nothing about answer quality.
+- Stubs replace only the external provider boundary. Everything from the SDK call inward is real app code. A `[fake-llm]` or `[stub-llm]` answer proves the pipeline end to end. It says nothing about answer quality.
 
 ## Cleanup
 
@@ -143,6 +146,6 @@ All of these are executable and live in `$S/scripts` unless noted.
 ## Gotchas
 
 - **Ask/agents:** `tiktoken` tries to download its encoding from `openaipublic.blob.core.windows.net`, which the cloud proxy blocks. Ask still completes. Ignore the proxy warning.
-- **Stub limits:** the fake Gemini never calls tools. Agent flows that need a tool call to progress (e.g. structured outputs) won't. Non-Gemini models in the Ask model picker hit real providers with blank keys and fail.
+- **Stub limits:** the fakes have no judgement. Structured outputs are canned (one 0–60s section; voice matches are always `uncertain`), and a flow with no scripted responder fails loudly with `FakeLLMError: ... no responder for <Schema>`. Add responders in `fast-api/app/providers/llm.py` (`DEFAULT_RESPONDERS`). In `http` mode only Gemini is stubbed, so other models fail.
 - **State accumulates on `i0`:** every scenario creates its own uniquely named data, but lists grow. For a clean slate, run `down.sh && up.sh`. In `compare.sh` the base is always fresh while head may not be.
 - **Not portable yet:** `setsid` and `/proc` make the scripts Linux-first. They target the cloud container. On macOS, use `docker-compose.local.yml` for now.

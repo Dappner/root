@@ -12,7 +12,6 @@ from fastapi import UploadFile
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.datetime_utils import utcnow
 from app.core.exceptions import ExternalServiceError, ValidationError
@@ -503,7 +502,7 @@ class SuggestionService:
                     playback_position_seconds=playback_position_seconds,
                 )
 
-                match = await VoiceSuggestionMatcher(settings.openai_api_key).match(
+                match = await VoiceSuggestionMatcher().match(
                     voice_transcript=suggestion.voice_transcript,
                     playback_position_seconds=playback_position_seconds,
                     candidate_utterances=candidate_utterances,

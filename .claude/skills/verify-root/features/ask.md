@@ -19,15 +19,16 @@ Sidebar **Ask** → `/ask`.
 Scenario: `node run.mjs quote-embed-ask`, second half.
 
 1. `/ask`: fill `textbox "Ask anything..."` and press Enter.
-2. Wait for text starting with `[stub-llm]`. That is the fake Gemini's reply streamed through the real agent → SSE → UI path.
+2. Wait for `[fake-llm] Stubbed answer`. The fake LLM first calls the real `search` tool (you'll see "Searching for …" and "Found N result(s)"), then answers `… Tool results: 1 …`. With `VERIFY_LLM=http` the answer is `[stub-llm] …` instead, and no tool is called.
 
 **Proof:**
 - the answer is rendered under the question
-- `fake-providers.jsonl` has `"provider": "gemini"` lines
+- in `http` mode, `provider-calls.jsonl` has `"provider": "gemini"` lines
 - `events.json` shows the `/rag-api/ask...` calls returning 2xx
+- in `fake` mode, `provider-calls.jsonl` shows the search's `"input_type": "query"` embed and a `rerank`
 
 ## Gotchas
 
-- Only Gemini is stubbed. Picking an OpenAI or Anthropic model in the picker hits the real APIs with blank keys and fails. That is expected here and is not a product bug.
-- The fake never issues tool calls, so the agent answers after one turn. Search tools only run if the model asks for them, so retrieval quality can't be judged here.
+- In `fake` mode every model in the picker works (the answer names the model). In `http` mode only Gemini does.
+- The fake LLM calls `search` exactly once, with your question verbatim, then answers. Other tools never run, and retrieval quality can't be judged here: the vectors are bag-of-words.
 - The `tiktoken` download from `openaipublic.blob.core.windows.net` is blocked by the cloud proxy. The answer still completes.

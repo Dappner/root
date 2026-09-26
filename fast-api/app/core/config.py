@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     # same model (same vector space); bumping it makes existing rows stale and
     # the admin refresh endpoint picks them up.
     embedding_model: str = "voyage-4-large"
+    # "live" (vendor Jetflow clients) or "fake" (deterministic, offline).
+    llm_provider: str = "live"
     # "voyage" (real) or "fake" (deterministic, offline: tests + local verification).
     embedding_provider: str = "voyage"
     # Override the Voyage API base URL (e.g. a local HTTP fake for verification runs).

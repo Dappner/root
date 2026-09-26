@@ -32,5 +32,6 @@ check "fast-api reachable through web proxy" curl -fsS --max-time 3 "$WEB_URL/ra
 check "seed user can sign in" curl -fsS --max-time 5 -o /dev/null -X POST "$WEB_URL/api/auth/sign-in/email" \
   -H "Content-Type: application/json" -H "Origin: $WEB_URL" \
   -d "{\"email\":\"$VERIFY_EMAIL\",\"password\":\"$VERIFY_PASSWORD\"}"
+echo "  llm: ${LLM_MODE:-fake} (VERIFY_LLM)"
 echo "  build: $GIT_HEAD from $APP_ROOT (now: $(git -C "$APP_ROOT" rev-parse --short HEAD)), started $STARTED_AT"
 exit $fail

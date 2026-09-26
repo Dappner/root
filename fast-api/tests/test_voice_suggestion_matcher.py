@@ -40,16 +40,15 @@ def _match() -> VoiceSuggestionMatch:
 
 @pytest.fixture
 def matcher() -> VoiceSuggestionMatcher:
-    # Avoid touching the real LLM client during construction. The matcher asserts
-    # the client is an AsyncOpenAIClient, so hand it a spec'd mock of that type.
-    from jetflow.clients.openai import AsyncOpenAIClient
+    # Hand the matcher a mock client so tests script extract() directly.
+    from jetflow.clients.base import AsyncBaseClient
 
-    fake_client = MagicMock(spec=AsyncOpenAIClient)
+    fake_client = MagicMock(spec=AsyncBaseClient)
     with patch(
         "app.services.voice_suggestion_matcher.create_llm_client",
         return_value=fake_client,
     ):
-        return VoiceSuggestionMatcher("test-key")
+        return VoiceSuggestionMatcher()
 
 
 @pytest.mark.asyncio

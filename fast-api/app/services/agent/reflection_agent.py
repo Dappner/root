@@ -8,8 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import get_logger
 from app.core.streaming.hit_store import HitStore
-from app.integrations.llm import create_llm_client
 from app.providers.embedder import Embedder
+from app.providers.llm import create_llm_client
 from app.schemas.rag import ModelConfig, RetrievalHit
 from app.services.agent.actions.get_source_context import GetSourceContext
 from app.services.agent.actions.search import Search

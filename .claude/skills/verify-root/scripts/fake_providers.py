@@ -6,8 +6,9 @@ Verification scaffolding only. Stdlib, no deps. Deterministic:
 - Embeddings: hashed bag-of-words, L2-normalised, so texts sharing words land
   near each other and hybrid search returns sensible hits.
 - Rerank: token-overlap score.
-- Gemini: returns "[stub-llm] ..." text (plain and SSE streaming). No tool calls,
-  so Jetflow agents (require_action=False) finish after one turn.
+- Gemini: returns "[stub-llm] ..." text (plain and SSE streaming). When the
+  request forces a tool call (toolConfig mode ANY) and the function is in
+  FORCED_CALL_ARGS, returns that functionCall instead (e.g. follow-up chips).
 
 Every request is appended as one JSON line to $FAKE_PROVIDERS_LOG so a
 verification run can prove the app actually called the provider.
@@ -57,6 +58,26 @@ def log(entry: dict) -> None:
         f.write(json.dumps({"ts": time.time(), **entry}) + "\n")
 
 
+# Canned args for forced function calls, keyed by Jetflow action name.
+FORCED_CALL_ARGS = {
+    "FollowUpPrompts": {"prompts": ["[stub-llm] Tell me more", "[stub-llm] How does this connect?"]},
+    "AutoSectionList": {"sections": [{"start_sec": 0, "end_sec": 60, "title": "[stub-llm] Section 1"}]},
+}
+
+
+def forced_call(body: dict) -> dict | None:
+    config = (body.get("toolConfig") or {}).get("functionCallingConfig") or {}
+    if config.get("mode") != "ANY":
+        return None
+    names = config.get("allowedFunctionNames") or [
+        decl["name"]
+        for tool in body.get("tools") or []
+        for decl in tool.get("functionDeclarations") or []
+    ]
+    name = next((n for n in names if n in FORCED_CALL_ARGS), None)
+    return {"functionCall": {"name": name, "args": FORCED_CALL_ARGS[name]}} if name else None
+
+
 def gemini_text(body: dict) -> str:
     last = ""
     for content in body.get("contents") or []:
@@ -67,11 +88,11 @@ def gemini_text(body: dict) -> str:
     return f"[stub-llm] Stubbed answer (no real model). Last input: {snippet}"
 
 
-def gemini_response(text: str, model: str) -> dict:
+def gemini_response(text: str, model: str, part: dict | None = None) -> dict:
     return {
         "candidates": [
             {
-                "content": {"role": "model", "parts": [{"text": text}]},
+                "content": {"role": "model", "parts": [part or {"text": text}]},
                 "finishReason": "STOP",
                 "index": 0,
             }
@@ -160,7 +181,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _gemini(self, body: dict, model: str, stream: bool) -> None:
         text = gemini_text(body)
-        log({"provider": "gemini", "op": "stream" if stream else "generate", "model": model})
+        call = forced_call(body)
+        log({
+            "provider": "gemini",
+            "op": "stream" if stream else "generate",
+            "model": model,
+            **({"function_call": call["functionCall"]["name"]} if call else {}),
+        })
+        if call and not stream:
+            return self._json(200, gemini_response("", model, part=call))
         if not stream:
             return self._json(200, gemini_response(text, model))
         self.send_response(200)
@@ -169,8 +198,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         words = text.split(" ")
         chunks = [" ".join(words[i : i + 4]) + " " for i in range(0, len(words), 4)]
+        if call:
+            chunks = [""]
         for i, chunk in enumerate(chunks):
-            payload = gemini_response(chunk, model)
+            payload = gemini_response(chunk, model, part=call)
             if i < len(chunks) - 1:
                 payload["candidates"][0].pop("finishReason")
             self.wfile.write(f"data: {json.dumps(payload)}\r\n\r\n".encode())

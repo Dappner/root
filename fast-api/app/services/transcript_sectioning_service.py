@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
-from app.integrations.llm import create_llm_client
+from app.providers.llm import create_llm_client
 from app.repositories.capture_repository import CaptureRepository
 from app.repositories.citation_repository import CitationRepository
 from app.repositories.source_section_repository import SourceSectionRepository

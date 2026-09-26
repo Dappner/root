@@ -1,7 +1,9 @@
 // Feature: highlights → embeddings → Ask. Add a quote to a new source, prove the
 // background task embedded it (rag_embeddings row + fake Voyage call), then ask a
-// question in /ask and see the stubbed answer stream back.
-// Answers are "[stub-llm] ..." text from fake_providers.py, not a real model.
+// question in /ask and see the answer stream back.
+// LLM_MODE=fake (default): FakeLLMClient calls the real search tool once, then
+//   answers "[fake-llm] ... Tool results: 1 ...".
+// LLM_MODE=http: live Gemini client → fake_providers.py, answer "[stub-llm] ...".
 import fs from "node:fs";
 import path from "node:path";
 
@@ -56,14 +58,24 @@ export default async ({ page, shot, sql, state, expect }) => {
   await page.goto("/ask");
   await page.getByRole("textbox", { name: "Ask anything..." }).fill("What does compounding curiosity do for reading?");
   await page.getByRole("textbox", { name: "Ask anything..." }).press("Enter");
-  const answer = page.getByText("[stub-llm]").first();
+  const fakeMode = (state.LLM_MODE ?? "fake") === "fake";
+  const answer = page.getByText(fakeMode ? "[fake-llm] Stubbed answer" : "[stub-llm]").first();
   await answer.waitFor({ timeout: 30000 });
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(1000);
   await shot("ask-answer");
 
-  const geminiCalls = fs.readFileSync(logFile, "utf8").split("\n").filter((l) => l.includes('"gemini"')).length;
-  expect(geminiCalls > 0, "fake Gemini received a call");
+  const answerText = await answer.textContent();
+  const log = fs.readFileSync(logFile, "utf8").split("\n");
+  const geminiCalls = log.filter((l) => l.includes('"gemini"')).length;
+  const queryEmbeds = log.filter((l) => l.includes('"input_type": "query"')).length;
+  if (fakeMode) {
+    // The fake called the real search tool: query embedding went to Voyage (fake).
+    expect(answerText.includes("Tool results: 1"), `answer used search results (got: ${answerText})`);
+    expect(queryEmbeds > 0, "search embedded the query via the Embedder");
+  } else {
+    expect(geminiCalls > 0, "fake Gemini received a call");
+  }
   expect(embedCallsAfter > embedCallsBefore, "fake Voyage received an embed call for the new citation");
   expect(emb, "rag_embeddings row for the new citation");
-  return { source_id: Number(sourceId), embedding: emb, gemini_calls: geminiCalls, answer_url: page.url() };
+  return { source_id: Number(sourceId), embedding: emb, llm_mode: state.LLM_MODE, answer: answerText, query_embeds: queryEmbeds, gemini_calls: geminiCalls };
 };

@@ -1,9 +1,9 @@
 """Small Jetflow agent for post-answer follow-up chips."""
 
 from jetflow import AsyncAgent, action
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from app.integrations.llm import create_llm_client
+from app.providers.llm import create_llm_client
 from app.schemas.rag import ModelConfig
 
 MAX_CONTEXT_CHARS = 5000
@@ -64,10 +64,12 @@ async def generate_followups(
         "Retrieved context:\n"
         f"{context[:MAX_CONTEXT_CHARS]}"
     )
-    # jetflow exposes the exit action's parsed body on `.parsed`; `.content` is the
-    # model's free-text message and is empty on the action path. Follow-up chips are
-    # non-critical, so fall back to no chips rather than raising.
-    parsed = response.parsed
-    if not isinstance(parsed, FollowUpPrompts):
+    # After an exit action the run ends on the tool message, so jetflow leaves
+    # `.parsed` unset and `.content` holds the action's return value (the JSON from
+    # finish_followups), same as transcript sectioning reads it. Follow-up chips
+    # are non-critical, so fall back to no chips rather than raising.
+    try:
+        parsed = FollowUpPrompts.model_validate_json(response.content or "")
+    except ValidationError:
         return []
     return [prompt.strip() for prompt in parsed.prompts if prompt.strip()][:4]

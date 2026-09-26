@@ -17,7 +17,6 @@ from jetflow import (
 from jetflow.agent.utils import calculate_usage
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.streaming.reflect_session_store import reflect_session_store
 from app.providers.embedder import Embedder
@@ -588,7 +587,7 @@ class RAGService:
         context: str,
     ) -> list[str]:
         """Generate post-answer follow-up prompts without failing the main response."""
-        if not answer.strip() or not settings.google_api_key:
+        if not answer.strip():
             return []
 
         try:
