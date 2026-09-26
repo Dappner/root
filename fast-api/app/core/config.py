@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     # same model (same vector space); bumping it makes existing rows stale and
     # the admin refresh endpoint picks them up.
     embedding_model: str = "voyage-4-large"
+    # Override the Voyage API base URL (e.g. a local fake for verification runs).
+    # Empty = the SDK default (https://api.voyageai.com/v1).
+    embedding_base_url: str = ""
 
     def get_jwks_url(self) -> str:
         """Get JWKS URL, deriving from better_auth_url if needed."""

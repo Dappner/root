@@ -126,6 +126,12 @@ For implementation details, see:
   - `doppler run -- uv run uvicorn app.main:app --reload --port 8081` (fast-api)
   - `doppler run -- make migrate-up` from `go-api` (apply schema migrations against the local DB)
 
+## Verifying Changes (no Doppler needed)
+
+- `.claude/skills/verify-root/` runs the whole stack locally: local Postgres, moto for R2, and a fake Voyage/Gemini. It drives the SPA with Playwright and saves screenshots, video and DB evidence to `.verify/evidence/`. Start with `scripts/up.sh`, then `harness/run.mjs <scenario>`, then `scripts/down.sh`.
+- `scripts/compare.sh <base-ref> <scenario>` records the same scenario against a base ref and against the current checkout, side by side.
+- Keep its feature map honest with `/maintain-verification-skill`.
+
 ## MCP Servers for Triage
 
 - **Neon** (`mcp__neon__*`) — prod Postgres, project `root`, default branch = prod. Read-only. Use for data integrity, embedding coverage, schema lookups, and slow queries.

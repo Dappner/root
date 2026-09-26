@@ -41,3 +41,6 @@ testing/root-api-client/**
 fast-api/app/__pycache__/
 scripts/__pycache__/
 fast-api/app/**/__pycache__/
+
+# Local verification runs (.claude/skills/verify-root): instance state + evidence
+.verify/

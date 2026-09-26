@@ -64,6 +64,7 @@ services:
       - LOG_LEVEL=INFO
       # AI Service Keys
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
+      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-voyage-4-large}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
