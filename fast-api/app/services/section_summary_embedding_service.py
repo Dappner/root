@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.core.datetime_utils import utcnow
 from app.core.logging import get_logger
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 from app.repositories.section_embedding_repository import (
     SectionEmbeddingCandidate,
     SectionEmbeddingRepository,
@@ -57,18 +57,18 @@ def _build_document(candidate: SectionEmbeddingCandidate) -> str:
 class SectionSummaryEmbeddingService:
     def __init__(
         self,
-        voyage: VoyageClient,
+        embedder: Embedder,
         session_factory: async_sessionmaker[AsyncSession],
         repository: SectionEmbeddingRepository | None = None,
     ):
-        self._voyage = voyage
+        self._embedder = embedder
         self._session_factory = session_factory
         self._repo = repository or SectionEmbeddingRepository()
 
     async def generate(self, section_id: int, user_id: str) -> None:
         await generate_entity_embedding(
             session_factory=self._session_factory,
-            voyage=self._voyage,
+            embedder=self._embedder,
             logger=logger,
             log_label="section summary",
             log_extra={"section_id": section_id},
@@ -100,7 +100,7 @@ class SectionSummaryEmbeddingService:
         ]
 
         return await refresh_stale_embeddings(
-            voyage=self._voyage,
+            embedder=self._embedder,
             session_factory=self._session_factory,
             model=settings.embedding_model,
             fk_column="section_id",

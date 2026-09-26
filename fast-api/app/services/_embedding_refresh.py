@@ -2,7 +2,7 @@
 
 The citation/capture/takeaway/section services all follow the same
 fire-and-forget flow after a mutation: load the candidate row, skip if it has
-no content hash or renders an empty document, embed via Voyage, upsert the
+no content hash or renders an empty document, embed via the Embedder, upsert the
 rag_embeddings row, commit. Only the candidate lookup, document rendering, and
 upsert differ per entity — services pass those in as callables.
 
@@ -18,8 +18,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.core.config import settings
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 
 DocumentValue = str | int | datetime | None
 DocumentField = tuple[str, DocumentValue]
@@ -47,7 +46,7 @@ def render_embedding_document(fields: Iterable[DocumentField]) -> str:
 async def generate_entity_embedding(
     *,
     session_factory: async_sessionmaker[AsyncSession],
-    voyage: VoyageClient,
+    embedder: Embedder,
     logger: logging.Logger,
     log_label: str,
     log_extra: dict[str, Any],
@@ -69,6 +68,9 @@ async def generate_entity_embedding(
         try:
             candidate = await get_candidate(db)
             if candidate is None:
+                # Deleted since, or scheduled before the writing transaction
+                # committed (request handlers: Depends(get_db, scope="function")).
+                logger.warning(f"{log_label} embedding skipped: row not found", extra=log_extra)
                 return
 
             sha = content_hash(candidate)
@@ -79,14 +81,10 @@ async def generate_entity_embedding(
             if not document.strip():
                 return
 
-            embed_result = await voyage.embed(
-                texts=[document],
-                model=settings.embedding_model,
-                input_type="document",
-            )
-            if not embed_result.embeddings:
+            vectors = await embedder.embed_documents([document])
+            if not vectors:
                 return
-            vector = embed_result.embeddings[0]
+            vector = vectors[0]
 
             await upsert(db, sha, vector)
             await db.commit()

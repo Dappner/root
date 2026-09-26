@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.streaming.hit_store import HitStore
 from app.integrations.llm import create_llm_client
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 from app.schemas.rag import ModelConfig, RetrievalHit
 from app.services.agent.actions.get_source_context import GetSourceContext
 from app.services.agent.actions.search import Search
@@ -41,15 +41,15 @@ def create_reflection_agent(
     db: AsyncSession,
     user_id: str,
     source_id: int,
-    voyage_client: VoyageClient,
+    embedder: Embedder,
     model_config: ModelConfig | None = None,
 ) -> ReflectionAgentContext:
     config = model_config or DEFAULT_MODEL_CONFIG
 
     hit_store = HitStore()
-    embedder = EmbeddingService(voyage_client)
+    search_embeddings = EmbeddingService(embedder)
 
-    search_action = Search(db, user_id, embedder, hit_store)
+    search_action = Search(db, user_id, search_embeddings, hit_store)
     context_action = GetSourceContext(db, user_id, hit_store)
     suggest_action = SuggestUncapturedCitations(db, user_id)
     suggest_takeaway_action = SuggestCreateTakeaway(db, user_id)

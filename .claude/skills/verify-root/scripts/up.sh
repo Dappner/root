@@ -49,13 +49,19 @@ docker run -d --name "$PG_CONTAINER" --label root-verify="$INSTANCE" \
   -p "127.0.0.1:$PG_PORT:5432" \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=root \
   "$PG_IMAGE" >/dev/null
+# The image runs a temporary server for init scripts, then restarts; only the
+# server after "init process complete" is the real one.
+for _ in $(seq 1 120); do
+  docker logs "$PG_CONTAINER" 2>&1 | grep -q "init process complete" && break; sleep 1
+done
+pg_ready=0
 for _ in $(seq 1 60); do
-  docker exec "$PG_CONTAINER" pg_isready -U postgres -d root >/dev/null 2>&1 && break; sleep 1
+  if docker exec "$PG_CONTAINER" pg_isready -h 127.0.0.1 -U postgres -d root >/dev/null 2>&1; then
+    pg_ready=1; break
+  fi
+  sleep 1
 done
-sleep 2  # the image restarts postgres once after init scripts
-for _ in $(seq 1 30); do
-  docker exec "$PG_CONTAINER" psql -U postgres -d root -c 'select 1' >/dev/null 2>&1 && break; sleep 1
-done
+[ "$pg_ready" = 1 ] || die "postgres not ready (docker logs $PG_CONTAINER)"
 
 # --- migrations: auth schema first (app tables FK into auth.user) -----------
 log "auth migrations"

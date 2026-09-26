@@ -4,14 +4,14 @@ from typing import Annotated
 
 from fastapi import Depends
 
-from app.clients import apple_podcasts, assemblyai, elevenlabs, r2, voyage, youtube
+from app.clients import apple_podcasts, assemblyai, elevenlabs, embedder, r2, youtube
 from app.core.database import AsyncSessionLocal
 from app.integrations.apple_podcasts import ApplePodcastsClient
 from app.integrations.assemblyai import AssemblyAIClient
 from app.integrations.elevenlabs import ElevenLabsClient
 from app.integrations.r2 import R2Client
-from app.integrations.voyage import VoyageClient
 from app.integrations.youtube import YouTubeTranscriptClient
+from app.providers.embedder import Embedder
 from app.repositories.podcast_repository import PodcastRepository
 from app.repositories.source_repository import SourceRepository
 from app.repositories.source_takeaway_repository import SourceTakeawayRepository
@@ -44,8 +44,8 @@ def get_r2() -> R2Client:
     return r2
 
 
-def get_voyage() -> VoyageClient:
-    return voyage
+def get_embedder() -> Embedder:
+    return embedder
 
 
 def get_assemblyai() -> AssemblyAIClient:
@@ -99,9 +99,9 @@ def capture_service() -> CaptureService:
 
 
 def citation_embedding_service(
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> CitationEmbeddingService:
-    return CitationEmbeddingService(voyage=voyage_client, session_factory=AsyncSessionLocal)
+    return CitationEmbeddingService(embedder=embedder, session_factory=AsyncSessionLocal)
 
 
 def citation_service() -> CitationService:
@@ -121,10 +121,10 @@ def podcast_repository() -> PodcastRepository:
 
 
 def section_summary_embedding_service(
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> SectionSummaryEmbeddingService:
     return SectionSummaryEmbeddingService(
-        voyage=voyage_client,
+        embedder=embedder,
         session_factory=AsyncSessionLocal,
     )
 
@@ -138,9 +138,9 @@ def tag_service() -> TagService:
 
 
 def takeaway_embedding_service(
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> TakeawayEmbeddingService:
-    return TakeawayEmbeddingService(voyage=voyage_client, session_factory=AsyncSessionLocal)
+    return TakeawayEmbeddingService(embedder=embedder, session_factory=AsyncSessionLocal)
 
 
 def takeaway_service() -> SourceTakeawayService:
@@ -149,12 +149,12 @@ def takeaway_service() -> SourceTakeawayService:
 
 def transcript_backfill_service(
     r2_client: Annotated[R2Client, Depends(get_r2)],
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> TranscriptEmbeddingBackfillService:
     return TranscriptEmbeddingBackfillService(
         session_factory=AsyncSessionLocal,
         r2=r2_client,
-        embedding=TranscriptEmbeddingService(voyage_client=voyage_client),
+        embedding=TranscriptEmbeddingService(embedder=embedder),
     )
 
 

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.hashing import sha256_hex
+from app.providers.embedder import Embedder
 from app.repositories.transcript_embedding_repository import TranscriptEmbeddingRepository
 
 logger = logging.getLogger(__name__)
@@ -89,10 +89,10 @@ def _build_embedding_document(
 class TranscriptEmbeddingService:
     def __init__(
         self,
-        voyage_client: Any,
+        embedder: Embedder,
         repo: TranscriptEmbeddingRepository | None = None,
     ) -> None:
-        self._voyage = voyage_client
+        self._embedder = embedder
         self._repo = repo or TranscriptEmbeddingRepository()
 
     async def embed_episode_transcript(
@@ -129,16 +129,11 @@ class TranscriptEmbeddingService:
             for chunk in chunks
         ]
 
-        result = await self._voyage.embed(
-            texts=documents,
-            model=settings.embedding_model,
-            input_type="document",
-        )
-        vectors = result.embeddings
+        vectors = await self._embedder.embed_documents(documents)
 
         if len(vectors) != len(chunks):
             raise RuntimeError(
-                f"Voyage returned {len(vectors)} embeddings for {len(chunks)} chunks"
+                f"Embedder returned {len(vectors)} embeddings for {len(chunks)} chunks"
             )
 
         # Delete existing chunk embeddings for this source before re-inserting

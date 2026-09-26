@@ -1,34 +1,28 @@
-"""Embedding service wrapper for Voyage AI."""
+"""Search-side embedding helpers: query embeddings and contextual reranking."""
 
 from __future__ import annotations
 
 from typing import List
 
-from app.core.config import settings
 from app.core.logging import get_logger
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 from app.schemas.rag import RetrievalHit
 
 logger = get_logger(__name__)
 
 
 class EmbeddingService:
-    """Thin async wrapper around Voyage AI embeddings."""
+    """Query embeddings + hit reranking on top of the configured Embedder."""
 
-    def __init__(self, client: VoyageClient):
+    def __init__(self, client: Embedder):
         self.client = client
 
     async def embed_query(self, query: str) -> List[float]:
-        """Generate embedding for a query using Voyage AI."""
+        """Generate the embedding for a search query."""
         logger.debug(f"Generating embedding for query: '{query[:100]}...'")
-        result = await self.client.embed(
-            texts=[query],
-            model=settings.embedding_model,
-            input_type="query",
-        )
-        embedding = result.embeddings[0]
+        embedding = await self.client.embed_query(query)
         logger.debug(f"Embedding generated, dimension={len(embedding)}")
-        return [float(x) for x in embedding]
+        return embedding
 
     async def rerank_hits(
         self,
@@ -36,7 +30,7 @@ class EmbeddingService:
         hits: list[RetrievalHit],
         top_k: int = 40,
     ) -> list[RetrievalHit]:
-        """Rerank hits using Voyage reranker (keeps tail as-is)."""
+        """Rerank hits with the Embedder's reranker (keeps tail as-is)."""
         if not hits:
             return hits
 
@@ -122,20 +116,13 @@ class EmbeddingService:
         )
 
         try:
-            result = await self.client.rerank(
-                query=query,
-                documents=documents,
-                model="rerank-2.5",
-                top_k=len(documents),  # Use actual number of valid documents
-            )
+            results = await self.client.rerank(query, documents)
 
             reranked: list[RetrievalHit] = []
-            # Sort by relevance score descending in case API does not guarantee order
-            for item in sorted(result.results, key=lambda r: r.relevance_score, reverse=True):
-                idx = item.index
-                if idx < len(valid_candidates):
-                    hit = valid_candidates[idx].model_copy()
-                    hit.score = item.relevance_score
+            for item in results:  # highest score first
+                if item.index < len(valid_candidates):
+                    hit = valid_candidates[item.index].model_copy()
+                    hit.score = item.score
                     reranked.append(hit)
 
             # Preserve any remaining hits beyond top_k in original order

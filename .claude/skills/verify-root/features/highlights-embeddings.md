@@ -29,9 +29,9 @@ Scenario: `node run.mjs quote-embed-ask`, first half.
 
 ## Gotchas
 
-- **Known product bug (found 2026-09-26, still open):** creating a citation never embeds it. `POST /rag-api/citations` schedules `generate_citation` as a FastAPI `BackgroundTask`. With FastAPI 0.128, the request's `get_db` session commits *after* background tasks run, so the task's own session can't see the uncommitted row. It then returns silently: no Voyage call, no log line.
-  - Reproduced in-process: the candidate lookup returns `NONE` for the just-created id.
-  - The same pattern likely affects captures, takeaways and section summaries.
-  - Until it's fixed, the scenario's embed assertions fail. That is the correct outcome.
-  - Workarounds that make it *look* green (calling the service directly, a refresh endpoint) are not proof of this path.
+- **Fixed 2026-09-26:** before the fix, creating a citation never embedded it. The route's `get_db` committed only *after* FastAPI ran the background embedding task, so the task couldn't see the row and skipped silently.
+  - Routes that take `BackgroundTasks` now use `Depends(get_db, scope="function")`, enforced by `fast-api/tests/test_background_task_db_scope.py`.
+  - A skipped row now logs `... embedding skipped: row not found`. Grep `fast-api.log` for it when this fails.
+  - Rows created before the fix still lack embeddings until the admin refresh backfills them.
+- Voyage calls go through the real `VoyageEmbedder` → SDK → the HTTP fake (`EMBEDDING_BASE_URL`). To bypass HTTP entirely, set `EMBEDDING_PROVIDER=fake` (the in-process `FakeEmbedder`); nothing is logged to `fake-providers.jsonl` then.
 - Embedding vectors come from the fake: hashed bag-of-words. Texts that share words score as similar; nothing more semantic than that.

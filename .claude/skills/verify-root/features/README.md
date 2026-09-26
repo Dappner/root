@@ -5,7 +5,7 @@ These are the user-facing features of the Root web app and how to prove each one
 | Feature | File | Scenario | Last live result |
 |---|---|---|---|
 | Library & sources | [library-sources.md](library-sources.md) | `library-add-source` | pass |
-| Highlights → embeddings | [highlights-embeddings.md](highlights-embeddings.md) | `quote-embed-ask` (first half) | **fail: product bug** (see file) |
+| Highlights → embeddings | [highlights-embeddings.md](highlights-embeddings.md) | `quote-embed-ask` (first half) | pass (was failing before the `get_db` scope fix) |
 | Ask (RAG chat) | [ask.md](ask.md) | `quote-embed-ask` (second half) | pass (stub LLM) |
 | Notes | [notes.md](notes.md) | none yet (recipe in file) | reached: editor opens, row created |
 | Auth & admin | [auth-admin.md](auth-admin.md) | covered by every scenario's login; admin recipe in file | pass |

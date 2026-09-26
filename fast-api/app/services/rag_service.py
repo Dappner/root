@@ -20,7 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.streaming.reflect_session_store import reflect_session_store
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 from app.schemas.rag import (
     AskRequest,
     ReflectRequest,
@@ -76,9 +76,9 @@ def _format_chat_history(history: list[Any]) -> str:
 class RAGService:
     """Service for RAG operations using Jetflow agent."""
 
-    def __init__(self, db: AsyncSession, voyage_client: VoyageClient):
+    def __init__(self, db: AsyncSession, embedder: Embedder):
         self.db = db
-        self.voyage_client = voyage_client
+        self.embedder = embedder
 
     async def ask_stream(
         self,
@@ -132,7 +132,7 @@ class RAGService:
                 agent_ctx = create_rag_agent(
                     db=self.db,
                     user_id=user_id,
-                    voyage_client=self.voyage_client,
+                    embedder=self.embedder,
                     model_config=request.model_config_,
                 )
             except Exception as e:
@@ -352,7 +352,7 @@ class RAGService:
                     db=self.db,
                     user_id=user_id,
                     source_id=source_id,
-                    voyage_client=self.voyage_client,
+                    embedder=self.embedder,
                     model_config=request.model_config_,
                 )
             except Exception as e:
@@ -610,7 +610,7 @@ class RAGService:
         agent_ctx = create_rag_agent(
             db=self.db,
             user_id=user_id,
-            voyage_client=self.voyage_client,
+            embedder=self.embedder,
             model_config=request.model_config_,
         )
         await agent_ctx.agent.run(request.question)

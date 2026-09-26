@@ -1,26 +1,25 @@
 """Shared batch helper for the four `refresh_stale` paths.
 
-Voyage caps each `embed` call at 128 inputs, so the refresh loop chunks at
-that boundary. A bulk `pg_insert(...).values([...])` per chunk turns 128
+Voyage (the production Embedder) caps each embed call at 128 inputs, so the
+refresh loop chunks at that boundary. A bulk `pg_insert(...).values([...])` per chunk turns 128
 upsert round-trips into one.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from datetime import datetime
-from typing import Literal, NamedTuple, cast
+from typing import Literal, NamedTuple
 
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.logging import get_logger
-from app.integrations.voyage import VoyageClient
 from app.models.database import RagEmbedding
+from app.providers.embedder import Embedder
 
 logger = get_logger(__name__)
 
-_VOYAGE_BATCH_SIZE = 128
+_EMBED_BATCH_SIZE = 128
 
 FkColumn = Literal["citation_id", "capture_id", "section_id", "takeaway_id"]
 
@@ -33,7 +32,7 @@ class PreparedEmbedding(NamedTuple):
 
 async def refresh_stale_embeddings(
     *,
-    voyage: VoyageClient,
+    embedder: Embedder,
     session_factory: async_sessionmaker[AsyncSession],
     model: str,
     fk_column: FkColumn,
@@ -46,25 +45,20 @@ async def refresh_stale_embeddings(
         return 0
 
     processed = 0
-    for start in range(0, len(rows), _VOYAGE_BATCH_SIZE):
-        chunk = rows[start : start + _VOYAGE_BATCH_SIZE]
+    for start in range(0, len(rows), _EMBED_BATCH_SIZE):
+        chunk = rows[start : start + _EMBED_BATCH_SIZE]
         try:
-            embed_result = await voyage.embed(
-                texts=[p.document for p in chunk],
-                model=model,
-                input_type="document",
-            )
+            vectors = await embedder.embed_documents([p.document for p in chunk])
         except Exception:
             logger.exception(
-                "voyage batch embed failed",
+                "batch embed failed",
                 extra={"fk_column": fk_column, "chunk_size": len(chunk)},
             )
             continue
 
-        vectors = cast(list[Sequence[float]], embed_result.embeddings)
         if len(vectors) != len(chunk):
             logger.error(
-                "voyage returned unexpected vector count",
+                "embedder returned unexpected vector count",
                 extra={
                     "fk_column": fk_column,
                     "expected": len(chunk),

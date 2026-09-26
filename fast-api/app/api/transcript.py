@@ -26,7 +26,7 @@ async def generate_transcript(
     request: GenerateTranscriptRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Any:
     """Generate a transcript for a podcast episode.
 
@@ -70,7 +70,7 @@ async def backfill_source_sections(
     request: BackfillSectionsRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(require_admin_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Any:
     """**DEPRECATED** — kept for ad-hoc admin use; backfill should be complete in prod.
 
@@ -104,7 +104,7 @@ async def embed_transcript(
     episode_id: int,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(require_admin_user)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Any:
     """Trigger embedding for an already-transcribed episode (admin only)."""
     return await get_transcript_generator().embed_transcript(episode_id, db, background_tasks)
@@ -129,7 +129,7 @@ async def generate_video_transcript(
     request: GenerateVideoTranscriptRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> Any:
     """Generate a transcript for a video using YouTube captions or AssemblyAI."""
     return await get_video_transcript_generator().generate_transcript(

@@ -35,7 +35,8 @@ The old Go backend has been retired from application traffic. The remaining Go s
 - **Services**: core business logic (RAG pipeline, external providers, embeddings). See **Transaction ownership** below for who commits when.
 - **Repositories**: data access only — `db.add` / `db.flush` / queries. Repos never call `db.commit()`.
 - **Models/DB**: SQLAlchemy models and vector search helpers.
-- **Integrations**: provider-specific clients (R2, YouTube/AssemblyAI, LLMs).
+- **Providers** (`app/providers/`): the seams services depend on. Each has a Protocol, a deterministic in-repo fake, and a factory that picks the real integration or the fake from settings (e.g. `Embedder`, `EMBEDDING_PROVIDER=voyage|fake`). Services type-hint against the Protocol, never a vendor SDK.
+- **Integrations**: provider-specific clients (R2, YouTube/AssemblyAI, LLMs) and the real implementations of provider Protocols (e.g. `VoyageEmbedder`).
 
 ## Dependency Injection
 
@@ -43,7 +44,7 @@ Use FastAPI dependencies for request-scoped boundaries and cross-cutting wiring:
 
 - `get_db`: request transaction boundary. It commits on success and rolls back on exception.
 - `get_current_user_id` / `require_admin_user`: auth and authorization entry points.
-- External clients and cache providers (`R2Client`, Voyage, cache): injectable so tests can replace them.
+- External clients and cache providers (`R2Client`, `Embedder`, cache): injectable so tests can replace them.
 - Service factories when the service needs injected clients, a session factory, or an expensive shared dependency.
 
 **Wiring rule (services into routes):** routes obtain services through a factory
@@ -53,7 +54,7 @@ module-level service singleton into a route. The factory pattern keeps wiring in
 one place and gives tests a `dependency_overrides` seam. Two exceptions:
 
 - A service that needs the request-scoped `db` (or another per-request value) at
-  construction is built in the handler — e.g. `RAGService(db, voyage_client)` in
+  construction is built in the handler — e.g. `RAGService(db, embedder)` in
   `app/api/rag.py`.
 - A service consumed by both routes and non-route callers (which can't use
   `Depends`) keeps a module accessor for the non-route path; the `deps.py`
@@ -70,6 +71,8 @@ db: Annotated[AsyncSession, Depends(get_db)]
 use that directly. Type aliases like `CurrentUserId` or `DbSession` are acceptable only if they reduce repetition across a module without hiding too much from readers.
 
 Do not push business rules into dependencies just to make handlers shorter. Domain behavior belongs in services. Dependencies should mostly provide auth context, database/session boundaries, clients, caches, and service instances.
+
+**Routes that take `BackgroundTasks` use `Depends(get_db, scope="function")`.** FastAPI runs background tasks *before* tearing down request-scoped dependencies, so with plain `Depends(get_db)` the request commits only after the background work ran, and a task that re-reads what the request wrote (embedding a new citation) sees nothing. `tests/test_background_task_db_scope.py` enforces this.
 
 For background jobs and resumable streams, be explicit about lifecycle. If the work must outlive the HTTP request, inject or pass a `session_factory` and let that service own its transaction instead of relying on request-scoped `get_db`.
 
@@ -92,7 +95,8 @@ Why: composes cleanly. A route handler can call N takes-db services and they all
 - `app/models/`: SQLAlchemy models and DB session helpers.
 - `app/repositories/`: data access helpers and query construction.
 - `app/core/`: config, auth, logging, cache, DB utilities.
-- `app/integrations/`: provider-specific external clients.
+- `app/providers/`: provider Protocols, fakes, and factories (the seams).
+- `app/integrations/`: provider-specific external clients and real provider implementations.
 - `app/prompts/`: prompt templates and prompt helpers.
 
 ## Datetime / Timezone Convention
@@ -133,9 +137,9 @@ All timestamps in the DB are stored as UTC. Most columns are `timestamp without 
   - `doppler run -- make test-unit` (pytest, no DB)
   - `doppler run -- make test-integration` (pytest, needs a migrated `TEST_DATABASE_URL`)
 - Unit tests still import `app.core.config` at collection time, so they need
-  `DATABASE_URL` and `EMBEDDING_API_KEY` set even though they never touch the DB.
-  Doppler may not supply these locally — prefix dummy values like CI does:
-  `DATABASE_URL=postgresql://test:test@localhost:5432/test EMBEDDING_API_KEY=test-key doppler run -- make test-unit`
+  `DATABASE_URL` set even though they never touch the DB. `tests/conftest.py`
+  defaults `EMBEDDING_PROVIDER=fake`, so no Voyage key is needed:
+  `DATABASE_URL=postgresql://test:test@localhost:5432/test make test-unit`
 
 ## References
 

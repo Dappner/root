@@ -15,8 +15,8 @@ from app.core.routing import APIRouter
 from app.core.streaming.ask_run_store import ask_run_store
 from app.core.streaming.ask_runner import run_ask_in_background, stream_events, tail_run
 from app.core.streaming.reflect_session_store import reflect_session_store
-from app.deps import get_voyage
-from app.integrations.voyage import VoyageClient
+from app.deps import get_embedder
+from app.providers.embedder import Embedder
 from app.schemas.model_catalog import MODEL_CATALOG, ModelCatalog
 from app.schemas.rag import AskRequest, ReflectRequest
 from app.services.rag_service import RAGService
@@ -118,13 +118,13 @@ async def reflect(
     request: ReflectRequest,
     user_id: Annotated[str, Depends(get_current_user_id)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> EventSourceResponse:
     """Reflect on a single source — same SSE events as /ask, plus suggestions."""
     logger.info(
         f"Reflect request from user {user_id}, source {source_id}: {request.question[:100]}"
     )
-    source = RAGService(db, voyage_client).reflect_stream(
+    source = RAGService(db, embedder).reflect_stream(
         user_id=user_id,
         source_id=source_id,
         request=request,

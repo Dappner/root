@@ -17,7 +17,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.logging import get_logger
 from app.core.streaming.ask_run_store import AskRun, ask_run_store
 from app.core.streaming.sse import to_sse_event
-from app.deps import get_voyage
+from app.deps import get_embedder
 from app.schemas.rag import AskRequest
 from app.services.rag_service import RAGService
 
@@ -49,7 +49,7 @@ async def run_ask_in_background(run: AskRun, request: AskRequest) -> None:
     """
     try:
         async with AsyncSessionLocal() as db:
-            service = RAGService(db, get_voyage())
+            service = RAGService(db, get_embedder())
             async for event in service.ask_stream(user_id=run.user_id, request=request):
                 tagged = ask_run_store.append_event(run, event)
                 if tagged is None:

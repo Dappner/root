@@ -104,8 +104,7 @@ def _format_youtube_transcript(entries: list[dict]) -> dict:
     if current_entries:
         if utterances and current_words < YOUTUBE_MIN_WORDS_PER_UTTERANCE:
             utterances[-1]["text"] = (
-                f"{utterances[-1]['text']} "
-                f"{' '.join(entry['text'] for entry in current_entries)}"
+                f"{utterances[-1]['text']} {' '.join(entry['text'] for entry in current_entries)}"
             )
             utterances[-1]["end"] = current_entries[-1]["end"]
         else:
@@ -203,7 +202,7 @@ _generator = None
 
 def get_video_transcript_generator() -> VideoTranscriptGenerator:
     """Get singleton video transcript generator instance."""
-    from app.clients import r2, voyage, youtube
+    from app.clients import embedder, r2, youtube
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.services.transcript_embedding_service import TranscriptEmbeddingService
@@ -212,9 +211,9 @@ def get_video_transcript_generator() -> VideoTranscriptGenerator:
     global _generator
     if _generator is None:
         try:
-            embedding_service = TranscriptEmbeddingService(voyage)
+            embedding_service = TranscriptEmbeddingService(embedder)
         except Exception as e:
-            logger.warning("Voyage AI not available — video transcript embedding disabled: %s", e)
+            logger.warning("Embedder not available — video transcript embedding disabled: %s", e)
             embedding_service = None
 
         sectioning_service = TranscriptSectioningService(

@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # Essential environment variables only
     database_url: str
-    embedding_api_key: str  # Voyage API key
+    embedding_api_key: str = ""  # Voyage API key (required when embedding_provider=voyage)
     google_api_key: str = ""  # Google API key (for Gemini LLM + YouTube Data API)
     openai_api_key: str = ""  # OpenAI API key (for review generation)
     anthropic_api_key: str = ""  # Anthropic API key (Claude models)
@@ -55,7 +55,9 @@ class Settings(BaseSettings):
     # same model (same vector space); bumping it makes existing rows stale and
     # the admin refresh endpoint picks them up.
     embedding_model: str = "voyage-4-large"
-    # Override the Voyage API base URL (e.g. a local fake for verification runs).
+    # "voyage" (real) or "fake" (deterministic, offline: tests + local verification).
+    embedding_provider: str = "voyage"
+    # Override the Voyage API base URL (e.g. a local HTTP fake for verification runs).
     # Empty = the SDK default (https://api.voyageai.com/v1).
     embedding_base_url: str = ""
 
@@ -70,7 +72,7 @@ class Settings(BaseSettings):
         """Validate required runtime config and fail fast on invalid deployments."""
         missing: list[str] = []
 
-        if not self.embedding_api_key:
+        if self.embedding_provider == "voyage" and not self.embedding_api_key:
             missing.append("embedding_api_key")
 
         r2_required = {

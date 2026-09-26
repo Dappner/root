@@ -322,7 +322,7 @@ _generator = None
 
 def get_transcript_generator() -> TranscriptGenerator:
     """Get singleton transcript generator instance."""
-    from app.clients import assemblyai, r2, voyage
+    from app.clients import assemblyai, embedder, r2
     from app.core.config import settings
     from app.core.database import AsyncSessionLocal
     from app.services.transcript_embedding_service import TranscriptEmbeddingService
@@ -331,9 +331,9 @@ def get_transcript_generator() -> TranscriptGenerator:
     global _generator
     if _generator is None:
         try:
-            embedding_service = TranscriptEmbeddingService(voyage)
+            embedding_service = TranscriptEmbeddingService(embedder)
         except Exception as e:
-            logger.warning("Voyage AI not available — transcript embedding disabled: %s", e)
+            logger.warning("Embedder not available — transcript embedding disabled: %s", e)
             embedding_service = None
 
         sectioning_service = TranscriptSectioningService(

@@ -62,7 +62,7 @@ async def add_podcast_episode_to_library(
     request: AddToLibraryRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     library_service: Annotated[PodcastLibraryService, Depends(podcast_library_service)],
 ) -> SourceDTO:
     return await library_service.add_to_library(
@@ -144,7 +144,7 @@ async def list_podcast_episodes(
 async def sync_podcast_show(
     id: str,
     background_tasks: BackgroundTasks,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     repo: Annotated[PodcastRepository, Depends(podcast_repository)],
     sync_service: Annotated[PodcastSyncService, Depends(podcast_sync_service)],
 ) -> SyncShowAccepted:

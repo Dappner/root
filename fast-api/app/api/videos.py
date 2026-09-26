@@ -54,7 +54,7 @@ async def import_video(
 async def add_video_to_library(
     payload: AddVideoToLibraryRequest,
     background_tasks: BackgroundTasks,
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     user_id: Annotated[str, Depends(get_current_user_id)],
     service: Annotated[VideoImportService, Depends(video_import_service)],
 ) -> SourceDTO:

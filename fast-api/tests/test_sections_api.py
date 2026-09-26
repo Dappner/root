@@ -4,9 +4,9 @@ DB-backed (require ``TEST_DATABASE_URL``). The ``client`` fixture authenticates
 as ``TEST_USER_ID``; ``other_user_client`` as ``OTHER_USER_ID``. An autouse
 fixture wipes section/source/embedding rows for both users around each test.
 
-Embedding generation is scheduled via ``BackgroundTasks`` and would call Voyage;
+Embedding generation is scheduled via ``BackgroundTasks`` and would call the embedder;
 we override the section embedding service factory to a no-op so tests don't make
-network calls. Embedding *row* deletion happens in-tx (no Voyage) and is asserted
+network calls. Embedding *row* deletion happens in-tx (no embedder) and is asserted
 directly against ``rag_embeddings``.
 """
 
@@ -53,8 +53,8 @@ async def _clean(db: AsyncSession) -> AsyncGenerator[None, None]:
 
 
 @pytest.fixture(autouse=True)
-def _no_voyage(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Stub the embedding service so scheduled background tasks don't hit Voyage."""
+def _no_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub the embedding service so scheduled background tasks don't run."""
 
     class _Noop:
         async def generate(self, section_id: int, user_id: str) -> None:

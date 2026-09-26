@@ -28,7 +28,7 @@ async def create_citation(
     req: CreateCitationRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[CitationService, Depends(citation_service)],
     embedding: Annotated[CitationEmbeddingService, Depends(citation_embedding_service)],
 ) -> CreateCitationResponse:
@@ -49,7 +49,7 @@ async def update_citation(
     req: UpdateCitationRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[CitationService, Depends(citation_service)],
     embedding: Annotated[CitationEmbeddingService, Depends(citation_embedding_service)],
 ) -> CitationResponse:

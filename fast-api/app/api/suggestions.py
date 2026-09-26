@@ -33,7 +33,7 @@ router = APIRouter(tags=["suggestions"])
 async def create_voice_suggestion(
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[SuggestionService, Depends(suggestion_service)],
     file: Annotated[UploadFile, File()],
     client_id: Annotated[str, Form()],
@@ -109,7 +109,7 @@ async def approve_suggestion(
     payload: ApproveSuggestionRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[SuggestionService, Depends(suggestion_service)],
     embedding: Annotated[CitationEmbeddingService, Depends(citation_embedding_service)],
 ) -> ApproveSuggestionResponse:
@@ -135,7 +135,7 @@ async def retry_suggestion(
     suggestion_id: int,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[SuggestionService, Depends(suggestion_service)],
     body: RetrySuggestionRequest | None = None,
 ) -> SuggestionResponse:

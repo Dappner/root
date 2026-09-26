@@ -112,6 +112,7 @@ services:
       # Sensitive AI keys — injected by Doppler (blank-OK for most local work).
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
       - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
+      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-voyage}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY:-}

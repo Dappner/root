@@ -4,8 +4,8 @@ Runs against the real database with fabricated vectors (orthogonal basis
 vectors make cosine ranking deterministic). Covers what HTTP smoke can't:
 the consolidated vector-search core (ranking, scoring, user scoping, source
 filters), the rag_embeddings upsert ON CONFLICT path, and the embedding
-service end-to-end with a fake Voyage client. Voyage itself is the only
-thing not exercised.
+service end-to-end with a stub Embedder. The embedding provider itself is
+the only thing not exercised.
 """
 
 from collections.abc import AsyncGenerator
@@ -116,21 +116,18 @@ async def test_embedding_upsert_replaces_on_conflict(clean_db: AsyncSession) -> 
     assert [r.model for r in rows] == ["model-v2"]
 
 
-class _FakeEmbedResult:
-    def __init__(self, embeddings: list[list[float]]) -> None:
-        self.embeddings = embeddings
+class _UnitVectorEmbedder:
+    """Embeds every document as basis vector 2 so search ranking is exact."""
 
-
-class _FakeVoyage:
-    async def embed(self, *, texts: list[str], model: str, input_type: str) -> _FakeEmbedResult:
-        return _FakeEmbedResult([unit_vector(2)])
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        return [unit_vector(2) for _ in texts]
 
 
 @pytest.mark.asyncio
 async def test_takeaway_embedding_service_end_to_end(clean_db: AsyncSession) -> None:
     """generate() against the real DB: candidate SQL → document → upsert → commit.
 
-    Only Voyage is faked; the takeaway then becomes findable via real vector
+    Only the embedding provider is stubbed; the takeaway then becomes findable via real vector
     search, closing the loop from service write to search read.
     """
     db = clean_db
@@ -150,7 +147,7 @@ async def test_takeaway_embedding_service_end_to_end(clean_db: AsyncSession) -> 
         return _Ctx()
 
     service = TakeawayEmbeddingService(
-        voyage=_FakeVoyage(),  # type: ignore[arg-type]
+        embedder=_UnitVectorEmbedder(),  # type: ignore[arg-type]
         session_factory=session_factory,  # type: ignore[arg-type]
     )
     await service.generate(tk, TEST_USER_ID)

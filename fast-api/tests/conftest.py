@@ -11,19 +11,27 @@ Tests with no ``db`` fixture (e.g. unit-only) skip the DB setup entirely so
 from __future__ import annotations
 
 import os
-from collections.abc import AsyncGenerator
 
-import pytest
-import pytest_asyncio
-from fastapi import Request
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+# Tests never call real providers; set before app.clients builds the embedder.
+os.environ.setdefault("EMBEDDING_PROVIDER", "fake")
 
-from app.core.auth import get_current_user_id
-from app.core.cache import reset_cache_for_tests
-from app.core.database import get_db
-from app.main import app
+from collections.abc import AsyncGenerator  # noqa: E402
+
+import pytest  # noqa: E402
+import pytest_asyncio  # noqa: E402
+from fastapi import Request  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy import text  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+
+from app.core.auth import get_current_user_id  # noqa: E402
+from app.core.cache import reset_cache_for_tests  # noqa: E402
+from app.core.database import get_db  # noqa: E402
+from app.main import app  # noqa: E402
 
 TEST_USER_ID = "test-user-tags"
 OTHER_USER_ID = "other-user-tags"

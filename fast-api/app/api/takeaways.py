@@ -50,7 +50,7 @@ async def create_takeaway(
     req: CreateTakeawayRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[SourceTakeawayService, Depends(takeaway_service)],
     embedding: Annotated[TakeawayEmbeddingService, Depends(takeaway_embedding_service)],
 ) -> TakeawayWithLinksResponse:
@@ -91,7 +91,7 @@ async def update_takeaway(
     req: UpdateTakeawayRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     service: Annotated[SourceTakeawayService, Depends(takeaway_service)],
     embedding: Annotated[TakeawayEmbeddingService, Depends(takeaway_embedding_service)],
 ) -> TakeawayWithLinksResponse:

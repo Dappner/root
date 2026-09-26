@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import settings
 from app.core.datetime_utils import utcnow
 from app.core.logging import get_logger
-from app.integrations.voyage import VoyageClient
+from app.providers.embedder import Embedder
 from app.repositories.citation_embedding_repository import (
     CaptureEmbeddingCandidate,
     CitationEmbeddingCandidate,
@@ -88,11 +88,11 @@ class CitationEmbeddingService:
 
     def __init__(
         self,
-        voyage: VoyageClient,
+        embedder: Embedder,
         session_factory: async_sessionmaker[AsyncSession],
         repository: CitationEmbeddingRepository | None = None,
     ):
-        self._voyage = voyage
+        self._embedder = embedder
         self._session_factory = session_factory
         self._repo = repository or CitationEmbeddingRepository()
 
@@ -101,7 +101,7 @@ class CitationEmbeddingService:
     async def generate_citation(self, citation_id: int, user_id: str) -> None:
         await generate_entity_embedding(
             session_factory=self._session_factory,
-            voyage=self._voyage,
+            embedder=self._embedder,
             logger=logger,
             log_label="citation",
             log_extra={"citation_id": citation_id},
@@ -128,7 +128,7 @@ class CitationEmbeddingService:
     async def generate_capture(self, capture_id: int, user_id: str) -> None:
         await generate_entity_embedding(
             session_factory=self._session_factory,
-            voyage=self._voyage,
+            embedder=self._embedder,
             logger=logger,
             log_label="capture",
             log_extra={"capture_id": capture_id},
@@ -177,7 +177,7 @@ class CitationEmbeddingService:
 
         citations, captures = await asyncio.gather(
             refresh_stale_embeddings(
-                voyage=self._voyage,
+                embedder=self._embedder,
                 session_factory=self._session_factory,
                 model=model,
                 fk_column="citation_id",
@@ -185,7 +185,7 @@ class CitationEmbeddingService:
                 now=now,
             ),
             refresh_stale_embeddings(
-                voyage=self._voyage,
+                embedder=self._embedder,
                 session_factory=self._session_factory,
                 model=model,
                 fk_column="capture_id",

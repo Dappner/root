@@ -14,13 +14,13 @@ from app.core.routing import APIRouter
 from app.deps import (
     capture_service,
     citation_service,
-    get_voyage,
+    get_embedder,
 )
 from app.deps import (
     section_summary_embedding_service as build_section_summary_embedding_service,
 )
-from app.integrations.voyage import VoyageClient
 from app.models.database import SourceSection
+from app.providers.embedder import Embedder
 from app.schemas.problem import Problem
 from app.schemas.sections import (
     CreateSourceSectionRequest,
@@ -39,18 +39,18 @@ router = APIRouter(tags=["sections"])
 
 
 def _section_summary_embedding_service(
-    voyage_client: VoyageClient,
+    embedder: Embedder,
 ) -> SectionSummaryEmbeddingService:
-    return build_section_summary_embedding_service(voyage_client)
+    return build_section_summary_embedding_service(embedder)
 
 
 def _section_summary_embedding_dependency(
-    voyage_client: Annotated[VoyageClient, Depends(get_voyage)],
+    embedder: Annotated[Embedder, Depends(get_embedder)],
 ) -> SectionSummaryEmbeddingService:
     provider = _section_summary_embedding_service
     if len(signature(provider).parameters) == 0:
         return cast(SectionSummaryEmbeddingService, provider())  # type: ignore[call-arg]
-    return provider(voyage_client)
+    return provider(embedder)
 
 
 class RegenerateSectionsResponse(BaseModel):
@@ -96,7 +96,7 @@ async def create_section(
     req: CreateSourceSectionRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     embedding: Annotated[
         SectionSummaryEmbeddingService, Depends(_section_summary_embedding_dependency)
     ],
@@ -184,7 +184,7 @@ async def update_section(
     req: UpdateSourceSectionRequest,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
     embedding: Annotated[
         SectionSummaryEmbeddingService, Depends(_section_summary_embedding_dependency)
     ],
@@ -292,7 +292,7 @@ async def regenerate_source_sections(
     source_id: int,
     background_tasks: BackgroundTasks,
     user_id: Annotated[str, Depends(get_current_user_id)],
-    db: Annotated[AsyncSession, Depends(get_db)],
+    db: Annotated[AsyncSession, Depends(get_db, scope="function")],
 ) -> RegenerateSectionsResponse:
     """Trigger auto-sectioning for a single source.
 
