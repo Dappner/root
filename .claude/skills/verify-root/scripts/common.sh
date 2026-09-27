@@ -52,7 +52,7 @@ assert_local_db() {
 # caller's shell or Doppler (DATABASE_URL, LOGFIRE_TOKEN, real API keys) leaks in.
 base_env() {
   local v
-  echo "PATH=$PATH" "HOME=$HOME"
+  printf '%s\n' "PATH=$PATH" "HOME=$HOME"
   for v in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy \
            SSL_CERT_FILE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS \
            PLAYWRIGHT_BROWSERS_PATH UV_CACHE_DIR; do

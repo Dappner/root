@@ -4,7 +4,7 @@
 # No Doppler, no Neon, no real R2, no real AI keys.
 #
 # Usage: up.sh            (instance 0: web on http://localhost:13000)
-#        VERIFY_PORT_OFFSET=1 up.sh   (second instance, all ports +1)
+#        VERIFY_PORT_OFFSET=1 up.sh   (second instance, all ports +10)
 # Prints the instance's state file path on success.
 
 source "$(dirname "$0")/common.sh"
@@ -23,25 +23,29 @@ assert_local_db "$DATABASE_URL"
 mkdir -p "$RUN_DIR" "$EVIDENCE_ROOT"
 
 # --- prerequisites ---------------------------------------------------------
+for bin in docker bun uv uvx pnpm python3 curl; do
+  command -v "$bin" >/dev/null || die "missing $bin"
+done
 if ! docker info >/dev/null 2>&1; then
   if [ "$(id -u)" = 0 ] && command -v dockerd >/dev/null; then
     log "starting dockerd (cloud container)"
-    (setsid dockerd >"$VERIFY_HOME/dockerd.log" 2>&1 &)
+    (python3 "$SKILL_DIR/scripts/new-session.py" dockerd >"$VERIFY_HOME/dockerd.log" 2>&1 &)
     for _ in $(seq 1 30); do docker info >/dev/null 2>&1 && break; sleep 1; done
   fi
   docker info >/dev/null 2>&1 || die "docker daemon not reachable"
 fi
-for bin in bun uv uvx pnpm python3 curl; do
-  command -v "$bin" >/dev/null || die "missing $bin"
-done
 [ -d "$APP_ROOT/fast-api/.venv" ] || (cd "$APP_ROOT/fast-api" && uv sync --frozen >/dev/null)
 [ -d "$APP_ROOT/auth-server/node_modules" ] || (cd "$APP_ROOT/auth-server" && bun install --frozen-lockfile >/dev/null)
 [ -d "$APP_ROOT/frontend/node_modules" ] || (cd "$APP_ROOT/frontend" && CYPRESS_INSTALL_BINARY=0 pnpm install --frozen-lockfile >/dev/null)
 
-mapfile -t BASE_ENV < <(base_env)
+# Compatible with the Bash 3.2 shipped by macOS.
+BASE_ENV=()
+while IFS= read -r entry; do
+  BASE_ENV+=("$entry")
+done < <(base_env)
 start_bg() {  # start_bg <name> <dir> <cmd...>; env comes from SVC_ENV
   local name=$1 dir=$2; shift 2
-  (cd "$dir" && exec setsid env -i "${BASE_ENV[@]}" "${SVC_ENV[@]}" "$@" \
+  (cd "$dir" && exec python3 "$SKILL_DIR/scripts/new-session.py" env -i "${BASE_ENV[@]}" ${SVC_ENV[@]+"${SVC_ENV[@]}"} "$@" \
      >"$RUN_DIR/$name.log" 2>&1 </dev/null) &
   echo $! >"$RUN_DIR/$name.pid"
 }
@@ -69,10 +73,10 @@ done
 # --- migrations: auth schema first (app tables FK into auth.user) -----------
 log "auth migrations"
 (cd "$APP_ROOT/auth-server" && env -i "${BASE_ENV[@]}" DATABASE_URL="$DATABASE_URL" \
-  bun run db:migrate >"$RUN_DIR/migrate-auth.log" 2>&1) || die "auth migrations failed ($RUN_DIR/migrate-auth.log)"
+  bun --no-env-file src/db/migrate.ts >"$RUN_DIR/migrate-auth.log" 2>&1) || die "auth migrations failed ($RUN_DIR/migrate-auth.log)"
 log "app migrations (golang-migrate)"
-docker run --rm --network host -v "$APP_ROOT/go-api/migrations:/migrations:ro" "$MIGRATE_IMAGE" \
-  -path=/migrations -database "$DATABASE_URL" up >"$RUN_DIR/migrate-app.log" 2>&1 \
+docker run --rm --network "container:$PG_CONTAINER" -v "$APP_ROOT/go-api/migrations:/migrations:ro" "$MIGRATE_IMAGE" \
+  -path=/migrations -database "postgres://postgres:postgres@127.0.0.1:5432/root?sslmode=disable" up >"$RUN_DIR/migrate-app.log" 2>&1 \
   || die "app migrations failed ($RUN_DIR/migrate-app.log)"
 
 # --- fakes -----------------------------------------------------------------
@@ -94,7 +98,7 @@ SVC_ENV=(
   ENABLE_SIGNUP=true EMAIL_FROM="Root <noreply@localhost>"
   APP_ENV=local NODE_ENV=development PORT="$AUTH_PORT"
 )
-start_bg auth-server "$APP_ROOT/auth-server" bun src/index.ts
+start_bg auth-server "$APP_ROOT/auth-server" bun --no-env-file src/index.ts
 wait_http auth-server "http://127.0.0.1:$AUTH_PORT/health" 60
 
 # --- fast-api --------------------------------------------------------------
@@ -108,6 +112,7 @@ case "${VERIFY_LLM:-fake}" in
 esac
 log "fast-api on :$API_PORT"
 SVC_ENV=(
+  PYTHONPATH="$APP_ROOT/fast-api"
   DATABASE_URL="$DATABASE_URL" BETTER_AUTH_URL="$WEB_URL"
   JWKS_URL="http://127.0.0.1:$AUTH_PORT/api/auth/jwks"
   APP_ENV=local LOG_LEVEL=INFO CORS_ORIGINS="[\"$WEB_URL\"]"
@@ -118,7 +123,10 @@ SVC_ENV=(
   R2_BUCKET_NAME=root-verify R2_ENDPOINT_URL="http://127.0.0.1:$S3_PORT"
   NO_PROXY="127.0.0.1,localhost,${NO_PROXY:-}" no_proxy="127.0.0.1,localhost,${no_proxy:-}"
 )
-start_bg fast-api "$APP_ROOT/fast-api" .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port "$API_PORT"
+# Settings reads .env relative to cwd. Run outside the source tree so its
+# optional provider keys, public storage URL and cache settings cannot leak in.
+mkdir -p "$RUN_DIR/fast-api-cwd"
+start_bg fast-api "$RUN_DIR/fast-api-cwd" "$APP_ROOT/fast-api/.venv/bin/uvicorn" app.main:app --host 127.0.0.1 --port "$API_PORT"
 wait_http fast-api "http://127.0.0.1:$API_PORT/rag-api/health" 90
 
 # --- frontend (Vite dev proxy = same-origin ingress, like nginx in prod) ------

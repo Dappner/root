@@ -16,7 +16,7 @@ Drives the Root web app the way a user does and writes evidence to disk. Everyth
 | Gemini, with `VERIFY_LLM=http` | the live Jetflow Gemini client → `fake_providers.py`: `[stub-llm] ...` text, plus forced function calls for follow-ups and sectioning | `GOOGLE_GEMINI_BASE_URL` |
 | AssemblyAI, YouTube, ElevenLabs, Resend, Turnstile | **not stubbed** (keys blank) | features using them are unreachable |
 
-**Safety.** Services start with `env -i` plus an explicit variable list, so nothing leaks in from your shell or Doppler (`DATABASE_URL`, `LOGFIRE_TOKEN`, real keys). The scripts refuse any `DATABASE_URL` that isn't `127.0.0.1` or `localhost`.
+**Safety.** Services start with `env -i` plus an explicit variable list, so nothing leaks in from your shell or Doppler (`DATABASE_URL`, `LOGFIRE_TOKEN`, real keys). FastAPI runs from an isolated working directory so it cannot read the checkout’s `.env`; Bun starts with `--no-env-file` for both migrations and auth. The scripts refuse any `DATABASE_URL` that isn't `127.0.0.1` or `localhost`.
 
 Paths below are relative to the repo root. `S=.claude/skills/verify-root`.
 
@@ -42,6 +42,7 @@ $S/scripts/up.sh          # ~25s warm; first run also installs deps and pulls im
 
 - **More instances:** `VERIFY_PORT_OFFSET=N` adds `N*10` to every port, giving instance `iN`.
 - **Other source tree:** `VERIFY_APP_ROOT=<path>` runs the app from another checkout (a worktree); `compare.sh` uses this.
+- **Prerequisites:** Docker, Bun (with `--no-env-file` support), uv/uvx, pnpm, Python 3, and curl. Linux and macOS Bash 3.2 are supported; Python creates process groups, and the migration container shares the Postgres container’s network (no host networking needed).
 - **Docker:** in a cloud container `up.sh` starts `dockerd` itself when no daemon is running (root only).
 - **Rerunning:** if the instance is already healthy, `up.sh` exits 0. If it is stale, `up.sh` tells you to run `down.sh` first.
 - **LLM mode:** `VERIFY_LLM=fake` (the default) covers every model in-process. `VERIFY_LLM=http` exercises the real Gemini SDK over HTTP instead, which is useful when a change touches Jetflow or client wiring. Switching modes requires `down.sh` first, and `up.sh` refuses to reuse an instance started in the other mode.
